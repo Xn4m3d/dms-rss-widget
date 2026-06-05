@@ -37,6 +37,20 @@ DesktopPluginComponent {
     property int previousItemCount: 0
     property var readLinks: ({})  // track clicked links
 
+    // [patch:filter] source filter: "" = show all; a source name shows only that feed.
+    property string activeFilter: ""
+    // [patch:filter] unique source labels derived from the configured feeds (each = one tag)
+    property var sources: {
+        var seen = {};
+        var list = [];
+        for (var i = 0; i < root.feeds.length; i++) {
+            var f = root.feeds[i];
+            var label = (f && f.name && ("" + f.name).length) ? f.name : ((f && f.url) ? f.url : "");
+            if (label && !seen[label]) { seen[label] = true; list.push(label); }
+        }
+        return list;
+    }
+
     property color resolvedBorderColor: {
         switch (borderColor) {
             case "secondary": return Theme.secondary;
@@ -86,8 +100,7 @@ DesktopPluginComponent {
                 var items = JSON.parse(out);
                 if (!items || !items.length) return;
                 root.feedItems = items;
-                feedModel.clear();
-                for (var i = 0; i < items.length; i++) feedModel.append(items[i]);
+                root.rebuildModel();   // [patch:filter]
             } catch (e) {}
         });
     }
@@ -127,6 +140,28 @@ DesktopPluginComponent {
         }
     }
 
+    // [patch:filter] (re)build the visible model from the master feedItems list,
+    // applying the active source filter.
+    function rebuildModel() {
+        feedModel.clear();
+        var items = root.feedItems || [];
+        var shown = 0;
+        for (var i = 0; i < items.length && shown < root.maxItems; i++) {   // [patch:filter] maxItems cap applied AFTER the source filter (per view)
+            if (root.activeFilter === "" || items[i].source === root.activeFilter) {
+                feedModel.append(items[i]);
+                shown++;
+            }
+        }
+    }
+
+    onActiveFilterChanged: {
+        root.rebuildModel();
+        if (root.activeFilter !== "")
+            filterResetTimer.restart();   // [patch:filter] auto-clear after 120 s
+        else
+            filterResetTimer.stop();
+    }
+
     // --- Timers ---
     Timer {
         id: timer
@@ -142,6 +177,16 @@ DesktopPluginComponent {
         repeat: false
         running: false
         onTriggered: root.handleVisibilityChange()
+    }
+
+    // [patch:filter] a source filter auto-clears after 120 s so the widget always
+    // returns to showing every feed.
+    Timer {
+        id: filterResetTimer
+        interval: 120000
+        repeat: false
+        running: false
+        onTriggered: root.activeFilter = ""
     }
 
     // --- Feed fetching ---
@@ -213,10 +258,11 @@ DesktopPluginComponent {
             items.sort(function(a, b) { return b.timestamp - a.timestamp; });
         }
 
-        // Limit total items
-        if (items.length > root.maxItems) {
-            items = items.slice(0, root.maxItems);
-        }
+        // [patch:filter] Do NOT cap to maxItems here. feedItems is the master list across all
+        // sources; a global cap before filtering lets a high-volume feed (e.g. Hacker News)
+        // crowd out a quiet one (e.g. Merox) entirely -> filtering the quiet source shows
+        // nothing even though it was fetched. The maxItems cap is applied per-view in
+        // rebuildModel(), AFTER the source filter. (Feeds are self-bounded, so this stays small.)
 
         // Notify on new items
         if (root.notifyNewItems && root.previousItemCount > 0 && items.length > root.previousItemCount) {
@@ -228,10 +274,7 @@ DesktopPluginComponent {
         root.previousItemCount = items.length;
 
         root.feedItems = items;
-        feedModel.clear();
-        for (var i = 0; i < items.length; i++) {
-            feedModel.append(items[i]);
-        }
+        root.rebuildModel();   // [patch:filter] populate model honoring the active source filter
         root.isLoading = false;
         if (items.length > 0) root.writeCache(items);   // [patch:cache]
     }
@@ -416,12 +459,106 @@ DesktopPluginComponent {
             anchors.margins: Theme.spacingM
             spacing: Theme.spacingS
 
-            // --- Top bar --- [patch:ui] no item-count title bar; "Mark all read" + ⚙️ settings.
+            // --- Top bar --- [patch:ui][patch:filter] no item-count title bar.
+            // Left: clickable source tags (filter). Right: "Mark all read" then ⚙️ settings.
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Theme.spacingXS
 
-                Item { Layout.fillWidth: true }
+                // [patch:filter] One tag per source. Click a tag to show only that feed for
+                // 120 s (then it auto-resets to all). Scrolls horizontally when many feeds.
+                Flickable {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 24
+                    contentWidth: tagRow.implicitWidth
+                    contentHeight: height
+                    clip: true
+                    flickableDirection: Flickable.HorizontalFlick
+                    boundsBehavior: Flickable.StopAtBounds
+                    visible: root.sources.length > 0
+
+                    Row {
+                        id: tagRow
+                        height: parent.height
+                        spacing: Theme.spacingXS
+
+                        // "✕ All" reset chip — only while a filter is active
+                        Rectangle {
+                            visible: root.activeFilter !== ""
+                            anchors.verticalCenter: parent.verticalCenter
+                            height: 22
+                            width: allChipText.implicitWidth + Theme.spacingM
+                            radius: height / 2
+                            color: Theme.withAlpha(Theme.primary, 0.25)
+                            border.width: 1
+                            border.color: Theme.primary
+
+                            StyledText {
+                                id: allChipText
+                                anchors.centerIn: parent
+                                text: "✕ All"
+                                font.pixelSize: root.fontSize - 2
+                                color: Theme.primary
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    if (root._clickFromOverview()) return;   // [patch:overview]
+                                    root.activeFilter = "";
+                                }
+                            }
+                        }
+
+                        Repeater {
+                            model: root.sources
+
+                            Rectangle {
+                                id: tagChip
+                                required property string modelData
+                                property bool active: root.activeFilter === modelData
+
+                                anchors.verticalCenter: parent.verticalCenter
+                                height: 22
+                                width: Math.min(chipText.implicitWidth, 140) + Theme.spacingM
+                                radius: height / 2
+                                color: active ? Theme.withAlpha(Theme.primary, 0.25)
+                                              : (chipArea.containsMouse ? Theme.withAlpha(Theme.primary, 0.15)
+                                                                        : Theme.surfaceContainerHigh)
+                                border.width: active ? 1 : 0
+                                border.color: Theme.primary
+
+                                StyledText {
+                                    id: chipText
+                                    anchors.centerIn: parent
+                                    width: Math.min(implicitWidth, 140)
+                                    text: tagChip.modelData
+                                    font.pixelSize: root.fontSize - 2
+                                    color: tagChip.active ? Theme.primary : Theme.surfaceVariantText
+                                    elide: Text.ElideRight
+                                    horizontalAlignment: Text.AlignHCenter
+                                }
+
+                                MouseArea {
+                                    id: chipArea
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        if (root._clickFromOverview()) return;   // [patch:overview]
+                                        // toggle: clicking the active tag returns to "all"
+                                        root.activeFilter = (root.activeFilter === tagChip.modelData) ? "" : tagChip.modelData;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // keep the right-side buttons pinned to the edge when there are no tags
+                Item { Layout.fillWidth: true; visible: root.sources.length === 0 }
 
                 // Mark all read / unread toggle
                 Rectangle {
