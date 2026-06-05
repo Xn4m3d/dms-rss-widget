@@ -96,7 +96,11 @@ Requires Node.js 18+ (uses the built-in `node:test` runner).
 
 ## Screenshots
 
-![RSS Widget on desktop](screenshot.png)
+![Feeds on the desktop (expanded view)](screenshots/screenshot-1.png)
+
+![Clickable per-source filter tags](screenshots/screenshot-2.png)
+
+![Item thumbnails](screenshots/screenshot-3.png)
 
 ## License
 
