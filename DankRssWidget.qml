@@ -92,6 +92,23 @@ DesktopPluginComponent {
         interval: 450
         onTriggered: root._overviewGuard = false
     }
+
+    // [patch:opacity] Right-drag (= DMS desktop edit mode) + mouse wheel adjusts ONLY the card
+    // background alpha. Tags / "Mark all read" / gear / feed text stay fully opaque (they are
+    // children drawn over the withAlpha() fill, not affected by it). Live value with a debounced
+    // persist to the instance config (backgroundOpacity is stored 0-100).
+    property real liveBackgroundOpacity: -1   // -1 => use the pluginData value
+    readonly property real effectiveBackgroundOpacity: liveBackgroundOpacity >= 0 ? liveBackgroundOpacity : root.backgroundOpacity
+    onBackgroundOpacityChanged: root.liveBackgroundOpacity = -1   // resync after our persist / a settings-slider change
+    function nudgeBackgroundOpacity(delta) {
+        root.liveBackgroundOpacity = Math.max(0, Math.min(1, root.effectiveBackgroundOpacity + delta));
+        opacityPersistTimer.restart();
+    }
+    Timer {
+        id: opacityPersistTimer
+        interval: 600
+        onTriggered: if (root.liveBackgroundOpacity >= 0) root.setData("backgroundOpacity", Math.round(root.liveBackgroundOpacity * 100))
+    }
     function seedFromCache() {
         Proc.runCommand("rssCacheRead", ["sh", "-c", "cat " + root._cacheFile + " 2>/dev/null"], function(out, code) {
             if (feedModel.count > 0) return;
@@ -449,10 +466,29 @@ DesktopPluginComponent {
     Rectangle {
         anchors.fill: parent
         radius: Theme.cornerRadius
-        color: Theme.withAlpha(Theme.surfaceContainer, root.backgroundOpacity)
+        color: Theme.withAlpha(Theme.surfaceContainer, root.effectiveBackgroundOpacity)   // [patch:opacity] live-tunable card fill
         border.width: root.enableBorder ? root.borderThickness : 0
-        border.color: Theme.withAlpha(root.resolvedBorderColor, root.borderOpacity)
+        border.color: Theme.withAlpha(root.resolvedBorderColor, root.borderOpacity * root.effectiveBackgroundOpacity)   // [patch:opacity] border fades with the card
         clip: true
+
+        // [patch:opacity] wheel-while-right-held (= DMS drag/edit mode) tunes the card opacity.
+        // Sits on top (z) so it sees the wheel BEFORE the ListView; NoButton + hoverEnabled:false
+        // => never steals clicks/hover. Passes the wheel through (accepted=false) unless the
+        // right button is held, so a plain wheel still scrolls the list.
+        MouseArea {
+            anchors.fill: parent
+            z: 100
+            acceptedButtons: Qt.NoButton
+            hoverEnabled: false
+            onWheel: wheel => {
+                if (wheel.buttons & Qt.RightButton) {
+                    root.nudgeBackgroundOpacity(wheel.angleDelta.y > 0 ? 0.04 : -0.04);
+                    wheel.accepted = true;
+                } else {
+                    wheel.accepted = false;
+                }
+            }
+        }
 
         ColumnLayout {
             anchors.fill: parent
@@ -667,7 +703,7 @@ DesktopPluginComponent {
                     radius: root.viewMode === "compact" ? 0 : Theme.cornerRadius
                     opacity: isRead ? 0.5 : 1.0
                     color: itemMouseArea.containsMouse
-                        ? Theme.withAlpha(Theme.primary, 0.08)
+                        ? Theme.withAlpha(Theme.surfaceContainerHigh, 0.95)   // [patch:opacity] hover reveals a readable backing even when the card is transparent
                         : "transparent"
 
                     Behavior on color {
