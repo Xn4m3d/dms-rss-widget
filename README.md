@@ -4,8 +4,8 @@ A desktop widget plugin for [DankMaterialShell](https://github.com/AvengeMedia/D
 
 > **This is a personal fork** of [`BrendonJL/dms-rss-widget`](https://github.com/BrendonJL/dms-rss-widget).
 > All credit for the original widget goes to [@BrendonJL](https://github.com/BrendonJL) — this fork only adds
-> a few fixes and personal UI tweaks on top of his work. See [Fork changes](#fork-changes) for the diff at a
-> glance. The fixes and the security hardening are also being offered back upstream as separate PRs.
+> a few fixes and personal UI tweaks on top of his work — see the **Added in this fork** list under
+> [Features](#features). The fixes and the security hardening are also being offered back upstream as separate PRs.
 
 ## Features
 
@@ -24,6 +24,16 @@ A desktop widget plugin for [DankMaterialShell](https://github.com/AvengeMedia/D
 - Appearance customization (background opacity, borders)
 - CDATA unwrapping and HTML entity decoding
 - Feed source labels per item
+
+**Added in this fork** (each is a self-contained commit; 🔒 🩹 🖱️ are also proposed upstream as PRs):
+
+- 🔒 Hardened feed fetching — `curl` limited to http/https, bounded redirects & response size, parsed XML capped before regex parsing (ReDoS), and an `isSafeUrl()` allowlist for opened links & thumbnails
+- 🩹 No blank flash on resize/recreate — shows the loading state instead of an empty widget
+- 🖱️ Ignores stray clicks delivered to the background surface while the Niri overview is open
+- 💾 Instant redraw via an item cache (`~/.cache/dankRssWidget-items.json`) when the widget is recreated
+- 🎨 Slimmer top bar (no title/count), a settings button, and an animated loading spinner
+- 🏷️ Per-source filter tags — click a source to filter for 120 s, then it auto-resets to all feeds
+- 🌫️ Hold right-click + scroll to live-tune the card background opacity
 
 ## Installation
 
@@ -87,24 +97,6 @@ Requires Node.js 18+ (uses the built-in `node:test` runner).
 ## Screenshots
 
 ![RSS Widget on desktop](screenshot.png)
-
-## Fork changes
-
-On top of the original widget, this fork adds (each is a self-contained commit):
-
-**Fixes & hardening** (also proposed upstream)
-- **security:** restrict `curl` to http/https, bound redirects & response size, cap parsed
-  XML before regex parsing (ReDoS), and an `isSafeUrl()` allowlist for opened links & thumbnails.
-- **fix (resize):** show the loading state instead of a blank flash when the widget is
-  recreated on resize/right-click.
-- **fix (overview):** ignore stray clicks delivered to the background surface while the Niri
-  overview is open.
-
-**Personal UI tweaks** (opinionated — kept here)
-- **cache:** persist items to `~/.cache/dankRssWidget-items.json` for an instant redraw on recreate.
-- **ui:** slimmer top bar (no title/count), a settings button, and an animated loading spinner.
-- **filter:** one clickable tag per source; click to filter for 120 s, then it auto-resets to all.
-- **opacity:** hold right-click + scroll to live-tune the card background opacity.
 
 ## License
 
