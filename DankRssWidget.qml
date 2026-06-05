@@ -416,59 +416,17 @@ DesktopPluginComponent {
             anchors.margins: Theme.spacingM
             spacing: Theme.spacingS
 
-            // --- Header ---
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: 2
-
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: Theme.spacingS
-
-                    Item { Layout.fillWidth: true }
-
-                    DankIcon {
-                        name: "rss_feed"
-                        size: Theme.iconSize
-                        color: Theme.primary
-                    }
-
-                    StyledText {
-                        text: "RSS Feeds"
-                        font.pixelSize: Theme.fontSizeMedium
-                        font.weight: Font.Bold
-                        color: Theme.surfaceText
-                    }
-
-                    Item { Layout.fillWidth: true }
-                }
-
-                StyledText {
-                    text: root.isLoading ? "Updating..." : feedModel.count + " items"
-                    font.pixelSize: Theme.fontSizeSmall
-                    color: Theme.surfaceVariantText
-                    Layout.fillWidth: true
-                    horizontalAlignment: Text.AlignHCenter
-                }
-            }
-
-            // --- Separator ---
-            Rectangle {
-                Layout.fillWidth: true
-                height: 1
-                color: Theme.outlineVariant
-            }
-
-            // --- Actions bar ---
+            // --- Top bar --- [patch:ui] no item-count title bar; "Mark all read" + ⚙️ settings.
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Theme.spacingXS
-                visible: feedModel.count > 0
 
                 Item { Layout.fillWidth: true }
 
                 // Mark all read / unread toggle
                 Rectangle {
+                    visible: feedModel.count > 0
+
                     property bool allRead: {
                         if (feedModel.count === 0) return false;
                         for (var i = 0; i < feedModel.count; i++) {
@@ -518,6 +476,39 @@ DesktopPluginComponent {
                         }
                     }
                 }
+
+                // [patch:ui] ⚙️ settings — moved to the RIGHT of "Mark all read".
+                Rectangle {
+                    width: 28
+                    height: 28
+                    radius: Theme.cornerRadius
+                    color: manageArea.containsMouse ? Theme.withAlpha(Theme.primary, 0.15) : "transparent"
+
+                    DankIcon {
+                        anchors.centerIn: parent
+                        name: "settings"
+                        size: 16
+                        color: manageArea.containsMouse ? Theme.primary : Theme.surfaceText
+                    }
+
+                    MouseArea {
+                        id: manageArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            if (root._clickFromOverview()) return;   // [patch:overview]
+                            Quickshell.execDetached(["dms", "ipc", "call", "settings", "focusOrToggleWith", "desktop_widgets"]);
+                        }
+                    }
+                }
+            }
+
+            // --- Separator ---
+            Rectangle {
+                Layout.fillWidth: true
+                height: 1
+                color: Theme.outlineVariant
             }
 
             // --- Feed list ---
@@ -721,6 +712,14 @@ DesktopPluginComponent {
                 spacing: Theme.spacingS
 
                 Item { Layout.fillHeight: true }
+
+                DankIcon {   // [patch:ui] real animated spinner (was static text only)
+                    name: "progress_activity"
+                    size: Theme.iconSize
+                    color: Theme.surfaceVariantText
+                    Layout.alignment: Qt.AlignHCenter
+                    NumberAnimation on rotation { from: 0; to: 360; duration: 1000; loops: Animation.Infinite; running: true }
+                }
 
                 StyledText {
                     text: "Loading feeds..."
