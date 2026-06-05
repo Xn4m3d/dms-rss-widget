@@ -48,9 +48,13 @@ DesktopPluginComponent {
     // --- Lifecycle ---
     Component.onCompleted: {
         root.windowRef = Window.window ?? null;
+        root.seedFromCache();   // [patch:cache] show last items instantly on recreate (resize/right-click)
         initialRunTimer.running = true;
     }
 
+    // [patch:cache] persist fetched items so a recreated widget shows them instantly
+    // (no blank) then refreshes in the background.
+    property string _cacheFile: "~/.cache/dankRssWidget-items.json"
     function isSafeUrl(u) { return typeof u === "string" && /^https?:\/\//i.test(u); }   // [patch:secure] scheme allowlist for open/Image/cache
 
     // [patch:overview] In Niri's "overview" (all-workspaces preview), selecting a workspace
@@ -73,6 +77,22 @@ DesktopPluginComponent {
         id: overviewReleaseTimer
         interval: 450
         onTriggered: root._overviewGuard = false
+    }
+    function seedFromCache() {
+        Proc.runCommand("rssCacheRead", ["sh", "-c", "cat " + root._cacheFile + " 2>/dev/null"], function(out, code) {
+            if (feedModel.count > 0) return;
+            if (code !== 0 || !out || !out.trim()) return;
+            try {
+                var items = JSON.parse(out);
+                if (!items || !items.length) return;
+                root.feedItems = items;
+                feedModel.clear();
+                for (var i = 0; i < items.length; i++) feedModel.append(items[i]);
+            } catch (e) {}
+        });
+    }
+    function writeCache(items) {
+        Proc.runCommand("rssCacheWrite", ["sh", "-c", "mkdir -p ~/.cache && printf %s \"$1\" > " + root._cacheFile, "sh", JSON.stringify(items || [])], function() {});
     }
 
     onVisibleChanged: root.handleVisibilityChange()
@@ -213,6 +233,7 @@ DesktopPluginComponent {
             feedModel.append(items[i]);
         }
         root.isLoading = false;
+        if (items.length > 0) root.writeCache(items);   // [patch:cache]
     }
 
     // --- XML Parsing ---
