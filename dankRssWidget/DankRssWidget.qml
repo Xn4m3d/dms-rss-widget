@@ -227,6 +227,21 @@ DesktopPluginComponent {
         interval: 600
         onTriggered: if (root.liveBackgroundOpacity >= 0) root.setData("backgroundOpacity", Math.round(root.liveBackgroundOpacity * 100))
     }
+
+    // [patch:tickerbar] same gesture for the ticker bar: right-hold + wheel tunes its opacity.
+    property real tickerLiveBgOpacity: -1
+    readonly property real effectiveTickerBgOpacity: tickerLiveBgOpacity >= 0 ? tickerLiveBgOpacity : root.tickerBgOpacity
+    onTickerBgOpacityChanged: root.tickerLiveBgOpacity = -1
+    function nudgeTickerBgOpacity(delta) {
+        root.tickerLiveBgOpacity = Math.max(0, Math.min(1, root.effectiveTickerBgOpacity + delta));
+        tickerOpacityPersistTimer.restart();
+    }
+    Timer {
+        id: tickerOpacityPersistTimer
+        interval: 600
+        onTriggered: if (root.tickerLiveBgOpacity >= 0) root.setData("tickerBgOpacity", Math.round(root.tickerLiveBgOpacity * 100))
+    }
+
     function seedFromCache() {
         Proc.runCommand("rssCacheRead", ["sh", "-c", "cat " + root._cacheFile + " 2>/dev/null"], function(out, code) {
             if (feedModel.count > 0) return;
@@ -1159,7 +1174,7 @@ DesktopPluginComponent {
             Rectangle {
                 anchors.fill: parent
                 radius: root.tickerCornerRadius
-                color: Theme.withAlpha(Theme.surfaceContainer, root.tickerBgOpacity)
+                color: Theme.withAlpha(Theme.surfaceContainer, root.effectiveTickerBgOpacity)
                 border.width: root.tickerBorderEnabled ? root.tickerBorderThickness : 0
                 border.color: Theme.withAlpha(root.tickerResolvedBorderColor, root.tickerBorderOpacity)
             }
@@ -1172,20 +1187,29 @@ DesktopPluginComponent {
                 anchors.fill: parent
                 acceptedButtons: Qt.LeftButton | Qt.RightButton
                 hoverEnabled: true
-                cursorShape: root.tickerEditing ? Qt.SizeAllCursor : Qt.ArrowCursor
+                cursorShape: root.tickerResizing ? Qt.SizeHorCursor : (root.tickerEditing ? Qt.SizeAllCursor : Qt.ArrowCursor)
 
                 property real grabDX: 0
                 property real grabDY: 0
+                property real grabLeft: 0
+                readonly property int resizeZone: 22
 
                 onPressed: mouse => {
                     if (mouse.button === Qt.RightButton && win.below) {
                         root.tickerEditing = true;
                         root.tickerHovered = true;
                         keyCatcher.forceActiveFocus();
-                        var g = editArea.mapToItem(null, mouse.x, mouse.y);
-                        editArea.grabDX = g.x - tickerStrip.x;
-                        editArea.grabDY = g.y - tickerStrip.y;
                         root._tickerMarkAdjusting();
+                        if (mouse.x > tickerStrip.width - editArea.resizeZone) {
+                            // bottom-right edge → resize width (left edge stays fixed)
+                            root.tickerResizing = true;
+                            editArea.grabLeft = tickerStrip.x;
+                        } else {
+                            root.tickerResizing = false;
+                            var g = editArea.mapToItem(null, mouse.x, mouse.y);
+                            editArea.grabDX = g.x - tickerStrip.x;
+                            editArea.grabDY = g.y - tickerStrip.y;
+                        }
                         mouse.accepted = true;
                     } else {
                         mouse.accepted = false;
@@ -1197,6 +1221,21 @@ DesktopPluginComponent {
                         return;
                     var g = editArea.mapToItem(null, mouse.x, mouse.y);
                     root._tickerMarkAdjusting();
+                    if (root.tickerResizing) {
+                        // width only: keep the left edge fixed (adjust hPct); magnet → full width
+                        var minW = Math.max(120, win.width * 0.10);
+                        var newW = Math.max(minW, Math.min(win.width, g.x - editArea.grabLeft));
+                        var wpct = newW / win.width * 100;
+                        if (wpct >= 95) {
+                            root._tickerWLive = 100;
+                            root._tickerHLive = 0;
+                        } else {
+                            root._tickerWLive = wpct;
+                            var denomW = Math.max(1, win.width - newW);
+                            root._tickerHLive = Math.max(0, Math.min(100, editArea.grabLeft / denomW * 100));
+                        }
+                        return;
+                    }
                     var availY = Math.max(1, win.height - root.mainBarReserved - root.tickerBarHeight);
                     var vraw = Math.max(0, Math.min(100, ((g.y - editArea.grabDY) - root.mainBarReserved) / availY * 100));
                     var snap = 3;   // tight magnet: snaps to the main bar (0) / screen bottom (100) only when close
@@ -1216,6 +1255,7 @@ DesktopPluginComponent {
                         if (root._tickerVLive >= 0) root.setData("tickerVerticalPct", Math.round(root._tickerVLive));
                         if (root._tickerHLive >= 0) root.setData("tickerHorizontalPct", Math.round(root._tickerHLive));
                         if (root._tickerWLive >= 0) root.setData("tickerWidthPct", Math.round(root._tickerWLive));
+                        root.tickerResizing = false;
                         root.tickerEditing = false;
                         root.tickerHovered = false;
                     }
@@ -1332,12 +1372,23 @@ DesktopPluginComponent {
             // pause-on-hover over titles (the per-title + editArea hover handlers
             // fought, so a title hover ended up clearing the flag).
             MouseArea {
+                id: stripHover
                 anchors.fill: parent
                 z: 100
                 acceptedButtons: Qt.NoButton
                 hoverEnabled: true
-                cursorShape: root.tickerEditing ? Qt.SizeAllCursor : Qt.ArrowCursor
+                // hint the width-resize zone (right edge) with a horizontal-resize cursor
+                cursorShape: (stripHover.mouseX > tickerStrip.width - 22) ? Qt.SizeHorCursor : (root.tickerEditing ? Qt.SizeAllCursor : Qt.ArrowCursor)
                 onContainsMouseChanged: root.tickerHovered = containsMouse
+                // right-hold + wheel tunes the bar opacity (same gesture as the card)
+                onWheel: wheel => {
+                    if (wheel.buttons & Qt.RightButton) {
+                        root.nudgeTickerBgOpacity(wheel.angleDelta.y > 0 ? 0.04 : -0.04);
+                        wheel.accepted = true;
+                    } else {
+                        wheel.accepted = false;
+                    }
+                }
             }
             }
 
@@ -1378,6 +1429,11 @@ DesktopPluginComponent {
                     }
                     StyledText {
                         text: "S: width 100% ⇄ 50%"
+                        font.pixelSize: Theme.fontSizeSmall
+                        color: Theme.surfaceText
+                    }
+                    StyledText {
+                        text: "↔ Right edge: resize width"
                         font.pixelSize: Theme.fontSizeSmall
                         color: Theme.surfaceText
                     }
