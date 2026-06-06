@@ -1254,6 +1254,7 @@ DesktopPluginComponent {
                                 spacing: 0
                                 Row {
                                     spacing: Theme.spacingXS
+                                    anchors.verticalCenter: parent.verticalCenter
                                     StyledText {
                                         visible: root.tickerShowSource && !!modelData.source
                                         text: modelData.source ? (modelData.source + ":") : ""
@@ -1284,13 +1285,16 @@ DesktopPluginComponent {
                                 // half-gap before the separator; the outer Row's
                                 // spacing gives the matching half-gap after it, so
                                 // the separator sits centered between headlines.
-                                Item { width: root.tickerItemSpacing / 2; height: 1 }
+                                Item { width: root.tickerItemSpacing / 2; height: 1; anchors.verticalCenter: parent.verticalCenter }
                                 StyledText {
                                     text: root.tickerSeparator
                                     font.pixelSize: root.tickerTitleFontSize
                                     font.family: root.tickerFontFamily
                                     color: Theme.surfaceVariantText
                                     verticalAlignment: Text.AlignVCenter
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    // emoji glyphs sit high in their line box; nudge down a touch
+                                    anchors.verticalCenterOffset: 2
                                 }
                             }
                         }

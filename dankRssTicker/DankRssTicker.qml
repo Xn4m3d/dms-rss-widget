@@ -122,13 +122,16 @@ PluginComponent {
                             font.pixelSize: Theme.fontSizeSmall
                             color: Theme.surfaceText
                             verticalAlignment: Text.AlignVCenter
+                            anchors.verticalCenter: parent.verticalCenter
                         }
-                        Item { width: root.tickerGap / 2; height: 1 }
+                        Item { width: root.tickerGap / 2; height: 1; anchors.verticalCenter: parent.verticalCenter }
                         StyledText {
                             text: root.separator
                             font.pixelSize: Theme.fontSizeSmall
                             color: Theme.surfaceVariantText
                             verticalAlignment: Text.AlignVCenter
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.verticalCenterOffset: 2
                         }
                     }
                 }
@@ -153,13 +156,16 @@ PluginComponent {
                             font.pixelSize: Theme.fontSizeSmall
                             color: Theme.surfaceText
                             verticalAlignment: Text.AlignVCenter
+                            anchors.verticalCenter: parent.verticalCenter
                         }
-                        Item { width: root.tickerGap / 2; height: 1 }
+                        Item { width: root.tickerGap / 2; height: 1; anchors.verticalCenter: parent.verticalCenter }
                         StyledText {
                             text: root.separator
                             font.pixelSize: Theme.fontSizeSmall
                             color: Theme.surfaceVariantText
                             verticalAlignment: Text.AlignVCenter
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.verticalCenterOffset: 2
                         }
                     }
                 }

@@ -1282,13 +1282,71 @@ PluginSettings {
         unit: ""
     }
 
-    StringSetting {
+    // separator: inline (not StringSetting) so it applies LIVE as you type and is
+    // capped at 3 chars / one emoji. Mimics the setting interface
+    // (settingKey/value/defaultValue/loadValue) so the reset feature picks it up.
+    Column {
+        id: sepSetting
+        property string settingKey: "tickerSeparator"
+        property string defaultValue: "•"
+        property string value: defaultValue
+        property bool isInitialized: false
         opacity: tickerToggle.value ? 1.0 : 0.2
         enabled: tickerToggle.value
-        settingKey: "tickerSeparator"
-        label: "Separator"
-        defaultValue: "•"
-        placeholder: "•"
+        width: parent.width
+        spacing: Theme.spacingS
+
+        function findSettings() {
+            var it = parent;
+            while (it) {
+                if (it.saveValue !== undefined && it.loadValue !== undefined)
+                    return it;
+                it = it.parent;
+            }
+            return null;
+        }
+        function loadValue() {
+            var s = findSettings();
+            if (s && s.pluginService) {
+                if (sepField.activeFocus && isInitialized)
+                    return;
+                isInitialized = false;
+                value = s.loadValue(settingKey, defaultValue);
+                sepField.text = value;
+                isInitialized = true;
+            }
+        }
+        Component.onCompleted: Qt.callLater(loadValue)
+        onValueChanged: {
+            if (sepField.text !== value)
+                sepField.text = value;
+            if (!isInitialized)
+                return;
+            var s = findSettings();
+            if (s)
+                s.saveValue(settingKey, value);
+        }
+
+        StyledText {
+            text: "Separator"
+            font.pixelSize: Theme.fontSizeMedium
+            font.weight: Font.Medium
+            color: Theme.surfaceText
+        }
+        StyledText {
+            width: parent.width
+            text: "Shown between headlines — up to 3 characters or one emoji, applied as you type."
+            font.pixelSize: Theme.fontSizeSmall
+            color: Theme.surfaceVariantText
+            wrapMode: Text.WordWrap
+        }
+        DankTextField {
+            id: sepField
+            width: parent.width
+            maximumLength: 3
+            placeholderText: "•"
+            onTextEdited: sepSetting.value = text
+        }
     }
 
     ToggleSetting {
