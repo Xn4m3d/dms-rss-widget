@@ -83,6 +83,9 @@ DesktopPluginComponent {
     property int tickerDockOffset: pluginData.tickerDockOffset ?? 0
     // whether the bar stays visible while the compositor overview is open
     property bool tickerShowInOverview: pluginData.tickerShowInOverview ?? true
+    // the ticker windows are top-level layer-shell surfaces; gate them on the instance
+    // being enabled so disabling the widget also tears down the ticker (not just the card).
+    readonly property bool _instanceEnabled: root.instanceData ? (root.instanceData.enabled !== false) : true
     property int tickerCornerRadius: pluginData.tickerCornerRadius ?? 0
     property bool tickerBorderEnabled: pluginData.tickerBorderEnabled ?? false
     property int tickerBorderThickness: pluginData.tickerBorderThickness ?? 1
@@ -255,10 +258,11 @@ DesktopPluginComponent {
     }
 
     onFeedsChanged: {
-        if (root.isRunnable()) {
-            fetchAllFeeds();
-            timer.restart();
-        }
+        // an explicit feed change (add/edit/remove from settings) must apply live, even
+        // if the widget isn't currently "runnable" (e.g. the settings modal covers it) —
+        // so force the refetch instead of gating it on isRunnable().
+        fetchAllFeeds(true);
+        timer.restart();
     }
 
     function handleVisibilityChange() {
@@ -322,8 +326,8 @@ DesktopPluginComponent {
     }
 
     // --- Feed fetching ---
-    function fetchAllFeeds() {
-        if (!root.isRunnable()) return;
+    function fetchAllFeeds(force) {
+        if (!force && !root.isRunnable()) return;
         if (root.feeds.length === 0) {
             root.feedItems = [];
             feedModel.clear();
@@ -1057,7 +1061,7 @@ DesktopPluginComponent {
     // Gated on tickerBarEnabled + a real on-desktop instance (so it never
     // spawns from a non-instance/global context). Reuses root.feedItems.
     Variants {
-        model: (root.tickerBarEnabled && root.isInstance) ? Quickshell.screens : []
+        model: (root.tickerBarEnabled && root.isInstance && root._instanceEnabled) ? Quickshell.screens : []
 
         PanelWindow {
             required property var modelData
@@ -1383,7 +1387,7 @@ DesktopPluginComponent {
     // reserves barHeight so windows tile BELOW the ticker — its exclusive zone
     // sums with the main bar's. The visible bar stays the deterministic overlay.
     Variants {
-        model: (root.tickerBarEnabled && root.isInstance && root.tickerPlacement === "below" && (root.tickerVerticalPct < 1 || root.tickerVerticalPct > 99)) ? Quickshell.screens : []
+        model: (root.tickerBarEnabled && root.isInstance && root._instanceEnabled && root.tickerPlacement === "below" && (root.tickerVerticalPct < 1 || root.tickerVerticalPct > 99)) ? Quickshell.screens : []
 
         PanelWindow {
             required property var modelData

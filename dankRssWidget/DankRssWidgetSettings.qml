@@ -315,6 +315,11 @@ PluginSettings {
 
             ListView {
                 id: feedsListView
+                // bridge file-level ids into the delegate (a ListView delegate is an
+                // isolated scope and can't see outer ids like root/nameField/urlField).
+                property var settings: root
+                property var nameFieldRef: nameField
+                property var urlFieldRef: urlField
                 width: parent.width
                 height: Math.max(60, contentHeight)
                 clip: true
@@ -322,8 +327,12 @@ PluginSettings {
                 model: root.loadValue("feeds", [])
 
                 delegate: StyledRect {
+                    id: feedDelegate
                     required property var modelData
                     required property int index
+                    readonly property var settings: ListView.view.settings
+                    readonly property var nameFieldRef: ListView.view.nameFieldRef
+                    readonly property var urlFieldRef: ListView.view.urlFieldRef
 
                     width: feedsListView.width
                     height: feedInfoRow.implicitHeight + Theme.spacingM * 2
@@ -382,11 +391,11 @@ PluginSettings {
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: {
-                                    root.editingIndex = index;
-                                    var feed = root.loadValue("feeds", [])[index];
-                                    nameField.text = feed.name || "";
-                                    urlField.text = feed.url || "";
-                                    root.ensureItemVisible(nameField);
+                                    feedDelegate.settings.editingIndex = index;
+                                    var feed = feedDelegate.settings.loadValue("feeds", [])[index];
+                                    feedDelegate.nameFieldRef.text = feed.name || "";
+                                    feedDelegate.urlFieldRef.text = feed.url || "";
+                                    feedDelegate.settings.ensureItemVisible(feedDelegate.nameFieldRef);
                                 }
                             }
                         }
@@ -409,15 +418,15 @@ PluginSettings {
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: {
-                                    var currentFeeds = root.loadValue("feeds", []);
+                                    var currentFeeds = feedDelegate.settings.loadValue("feeds", []);
                                     currentFeeds = currentFeeds.filter(function(_, i) { return i !== index; });
-                                    root.saveValue("feeds", currentFeeds);
-                                    if (root.editingIndex === index) {
-                                        root.editingIndex = -1;
-                                        nameField.text = "";
-                                        urlField.text = "";
-                                    } else if (root.editingIndex > index) {
-                                        root.editingIndex--;
+                                    feedDelegate.settings.saveValue("feeds", currentFeeds);
+                                    if (feedDelegate.settings.editingIndex === index) {
+                                        feedDelegate.settings.editingIndex = -1;
+                                        feedDelegate.nameFieldRef.text = "";
+                                        feedDelegate.urlFieldRef.text = "";
+                                    } else if (feedDelegate.settings.editingIndex > index) {
+                                        feedDelegate.settings.editingIndex--;
                                     }
                                 }
                             }
@@ -494,7 +503,7 @@ PluginSettings {
                             ToastService.showError("Paste OPML content first");
                         return;
                     }
-                    var imported = parseOpml(xml);
+                    var imported = tabGeneral.parseOpml(xml);
                     if (imported.length === 0) {
                         if (typeof ToastService !== "undefined")
                             ToastService.showError("No feeds found in OPML");
@@ -575,21 +584,27 @@ PluginSettings {
         spacing: Theme.spacingS
 
         DankButton {
-            text: "AP News"
-            iconName: "add"
-            onClicked: addPresetFeed("AP News", "https://rsshub.app/apnews/topics/apf-topnews")
-        }
-
-        DankButton {
             text: "NPR"
             iconName: "add"
-            onClicked: addPresetFeed("NPR", "https://feeds.npr.org/1001/rss.xml")
+            onClicked: tabGeneral.addPresetFeed("NPR", "https://feeds.npr.org/1001/rss.xml")
         }
 
         DankButton {
-            text: "Reuters"
+            text: "NYT"
             iconName: "add"
-            onClicked: addPresetFeed("Reuters", "https://rsshub.app/reuters/world")
+            onClicked: tabGeneral.addPresetFeed("NYT", "https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml")
+        }
+
+        DankButton {
+            text: "CNN"
+            iconName: "add"
+            onClicked: tabGeneral.addPresetFeed("CNN", "http://rss.cnn.com/rss/cnn_topstories.rss")
+        }
+
+        DankButton {
+            text: "ABC News"
+            iconName: "add"
+            onClicked: tabGeneral.addPresetFeed("ABC News", "https://feeds.abcnews.com/abcnews/topstories")
         }
     }
 
@@ -609,19 +624,101 @@ PluginSettings {
         DankButton {
             text: "BBC World"
             iconName: "add"
-            onClicked: addPresetFeed("BBC World", "https://feeds.bbci.co.uk/news/world/rss.xml")
+            onClicked: tabGeneral.addPresetFeed("BBC World", "https://feeds.bbci.co.uk/news/world/rss.xml")
         }
 
         DankButton {
             text: "Al Jazeera"
             iconName: "add"
-            onClicked: addPresetFeed("Al Jazeera", "https://www.aljazeera.com/xml/rss/all.xml")
+            onClicked: tabGeneral.addPresetFeed("Al Jazeera", "https://www.aljazeera.com/xml/rss/all.xml")
         }
 
         DankButton {
             text: "The Guardian"
             iconName: "add"
-            onClicked: addPresetFeed("The Guardian", "https://www.theguardian.com/world/rss")
+            onClicked: tabGeneral.addPresetFeed("The Guardian", "https://www.theguardian.com/world/rss")
+        }
+
+        DankButton {
+            text: "Deutsche Welle"
+            iconName: "add"
+            onClicked: tabGeneral.addPresetFeed("Deutsche Welle", "https://rss.dw.com/rdf/rss-en-all")
+        }
+
+        DankButton {
+            text: "France 24"
+            iconName: "add"
+            onClicked: tabGeneral.addPresetFeed("France 24", "https://www.france24.com/en/rss")
+        }
+    }
+
+    // Finance
+    StyledText {
+        width: parent.width
+        text: "Finance"
+        font.pixelSize: Theme.fontSizeSmall
+        font.weight: Font.Medium
+        color: Theme.primary
+    }
+
+    Flow {
+        width: parent.width
+        spacing: Theme.spacingS
+
+        DankButton {
+            text: "CNBC"
+            iconName: "add"
+            onClicked: tabGeneral.addPresetFeed("CNBC", "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000664")
+        }
+
+        DankButton {
+            text: "Yahoo Finance"
+            iconName: "add"
+            onClicked: tabGeneral.addPresetFeed("Yahoo Finance", "https://finance.yahoo.com/news/rssindex")
+        }
+
+        DankButton {
+            text: "MarketWatch"
+            iconName: "add"
+            onClicked: tabGeneral.addPresetFeed("MarketWatch", "https://feeds.content.dowjones.io/public/rss/mw_topstories")
+        }
+    }
+
+    // Bitcoin & cryptocurrency
+    StyledText {
+        width: parent.width
+        text: "Bitcoin & cryptocurrency"
+        font.pixelSize: Theme.fontSizeSmall
+        font.weight: Font.Medium
+        color: Theme.primary
+    }
+
+    Flow {
+        width: parent.width
+        spacing: Theme.spacingS
+
+        DankButton {
+            text: "CoinDesk"
+            iconName: "add"
+            onClicked: tabGeneral.addPresetFeed("CoinDesk", "https://www.coindesk.com/arc/outboundfeeds/rss/")
+        }
+
+        DankButton {
+            text: "Cointelegraph"
+            iconName: "add"
+            onClicked: tabGeneral.addPresetFeed("Cointelegraph", "https://cointelegraph.com/rss")
+        }
+
+        DankButton {
+            text: "Bitcoin Magazine"
+            iconName: "add"
+            onClicked: tabGeneral.addPresetFeed("Bitcoin Magazine", "https://bitcoinmagazine.com/feed")
+        }
+
+        DankButton {
+            text: "Decrypt"
+            iconName: "add"
+            onClicked: tabGeneral.addPresetFeed("Decrypt", "https://decrypt.co/feed")
         }
     }
 
@@ -641,19 +738,37 @@ PluginSettings {
         DankButton {
             text: "Hacker News"
             iconName: "add"
-            onClicked: addPresetFeed("Hacker News", "https://hnrss.org/newest")
+            onClicked: tabGeneral.addPresetFeed("Hacker News", "https://hnrss.org/newest")
         }
 
         DankButton {
             text: "Ars Technica"
             iconName: "add"
-            onClicked: addPresetFeed("Ars Technica", "https://feeds.arstechnica.com/arstechnica/index")
+            onClicked: tabGeneral.addPresetFeed("Ars Technica", "https://feeds.arstechnica.com/arstechnica/index")
         }
 
         DankButton {
             text: "The Verge"
             iconName: "add"
-            onClicked: addPresetFeed("The Verge", "https://www.theverge.com/rss/index.xml")
+            onClicked: tabGeneral.addPresetFeed("The Verge", "https://www.theverge.com/rss/index.xml")
+        }
+
+        DankButton {
+            text: "Phoronix"
+            iconName: "add"
+            onClicked: tabGeneral.addPresetFeed("Phoronix", "https://www.phoronix.com/rss.php")
+        }
+
+        DankButton {
+            text: "9to5Linux"
+            iconName: "add"
+            onClicked: tabGeneral.addPresetFeed("9to5Linux", "https://9to5linux.com/feed")
+        }
+
+        DankButton {
+            text: "The Register"
+            iconName: "add"
+            onClicked: tabGeneral.addPresetFeed("The Register", "https://www.theregister.com/headlines.atom")
         }
     }
 
@@ -673,43 +788,67 @@ PluginSettings {
         DankButton {
             text: "r/linux"
             iconName: "add"
-            onClicked: addPresetFeed("r/linux", "https://www.reddit.com/r/linux/.rss")
+            onClicked: tabGeneral.addPresetFeed("r/linux", "https://www.reddit.com/r/linux/.rss")
         }
 
         DankButton {
             text: "r/niri"
             iconName: "add"
-            onClicked: addPresetFeed("r/niri", "https://www.reddit.com/r/niri/.rss")
+            onClicked: tabGeneral.addPresetFeed("r/niri", "https://www.reddit.com/r/niri/.rss")
         }
 
         DankButton {
             text: "r/hyprland"
             iconName: "add"
-            onClicked: addPresetFeed("r/hyprland", "https://www.reddit.com/r/hyprland/.rss")
+            onClicked: tabGeneral.addPresetFeed("r/hyprland", "https://www.reddit.com/r/hyprland/.rss")
         }
 
         DankButton {
             text: "r/fedora"
             iconName: "add"
-            onClicked: addPresetFeed("r/fedora", "https://www.reddit.com/r/fedora/.rss")
+            onClicked: tabGeneral.addPresetFeed("r/fedora", "https://www.reddit.com/r/fedora/.rss")
         }
 
         DankButton {
             text: "r/archlinux"
             iconName: "add"
-            onClicked: addPresetFeed("r/archlinux", "https://www.reddit.com/r/archlinux/.rss")
+            onClicked: tabGeneral.addPresetFeed("r/archlinux", "https://www.reddit.com/r/archlinux/.rss")
         }
 
         DankButton {
             text: "r/NixOS"
             iconName: "add"
-            onClicked: addPresetFeed("r/NixOS", "https://www.reddit.com/r/NixOS/.rss")
+            onClicked: tabGeneral.addPresetFeed("r/NixOS", "https://www.reddit.com/r/NixOS/.rss")
         }
 
         DankButton {
             text: "r/Ubuntu"
             iconName: "add"
-            onClicked: addPresetFeed("r/Ubuntu", "https://www.reddit.com/r/Ubuntu/.rss")
+            onClicked: tabGeneral.addPresetFeed("r/Ubuntu", "https://www.reddit.com/r/Ubuntu/.rss")
+        }
+
+        DankButton {
+            text: "r/unixporn"
+            iconName: "add"
+            onClicked: tabGeneral.addPresetFeed("r/unixporn", "https://www.reddit.com/r/unixporn/.rss")
+        }
+
+        DankButton {
+            text: "r/wayland"
+            iconName: "add"
+            onClicked: tabGeneral.addPresetFeed("r/wayland", "https://www.reddit.com/r/wayland/.rss")
+        }
+
+        DankButton {
+            text: "r/linux_gaming"
+            iconName: "add"
+            onClicked: tabGeneral.addPresetFeed("r/linux_gaming", "https://www.reddit.com/r/linux_gaming/.rss")
+        }
+
+        DankButton {
+            text: "r/Bitcoin"
+            iconName: "add"
+            onClicked: tabGeneral.addPresetFeed("r/Bitcoin", "https://www.reddit.com/r/Bitcoin/.rss")
         }
     }
 
