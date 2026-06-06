@@ -35,7 +35,7 @@ PluginSettings {
 
     StyledText {
         width: parent.width
-        text: "Dank RSS Ticker"
+        text: "Dank RSS Widget+ (Pill companion)"
         font.pixelSize: Theme.fontSizeLarge
         font.weight: Font.Bold
         color: Theme.surfaceText

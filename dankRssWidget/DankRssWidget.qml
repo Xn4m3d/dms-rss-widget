@@ -78,6 +78,11 @@ DesktopPluginComponent {
     property real tickerWidthPct: pluginData.tickerWidthPct ?? 100         // % of screen width
     property real tickerHorizontalPct: pluginData.tickerHorizontalPct ?? 50   // 0=left .. 100=right (when width<100)
     property real tickerVerticalPct: pluginData.tickerVerticalPct ?? 0     // "below": 0=just under main bar .. 100=screen bottom
+    // fine vertical nudge (px) applied only when DOCKED (top/bottom), to align the
+    // bar's edge with the tiled windows. Reservation follows when nudging down.
+    property int tickerDockOffset: pluginData.tickerDockOffset ?? 0
+    // whether the bar stays visible while the compositor overview is open
+    property bool tickerShowInOverview: pluginData.tickerShowInOverview ?? true
     property int tickerCornerRadius: pluginData.tickerCornerRadius ?? 0
     property bool tickerBorderEnabled: pluginData.tickerBorderEnabled ?? false
     property int tickerBorderThickness: pluginData.tickerBorderThickness ?? 1
@@ -1129,6 +1134,8 @@ DesktopPluginComponent {
 
             Item {
                 id: tickerStrip
+                // hide while the compositor overview is open, unless allowed
+                visible: !(NiriService.inOverview && !root.tickerShowInOverview)
                 width: Math.round(win.width * (root.effTickerWPct / 100))
                 x: Math.round((win.width - width) * (root.effTickerHPct / 100))
                 height: root.tickerBarHeight
@@ -1139,7 +1146,10 @@ DesktopPluginComponent {
                     if (!win.below)
                         return 0;
                     var avail = Math.max(0, win.height - root.mainBarReserved - root.tickerBarHeight);
-                    return Math.round(root.mainBarReserved + avail * (root.effTickerVPct / 100));
+                    var base = root.mainBarReserved + avail * (root.effTickerVPct / 100);
+                    if (win.docked)
+                        base += root.tickerDockOffset;
+                    return Math.round(Math.max(0, Math.min(win.height - root.tickerBarHeight, base)));
                 }
 
             Rectangle {
@@ -1393,7 +1403,7 @@ DesktopPluginComponent {
             implicitHeight: root.tickerBarHeight
             // reserve a few px less than the bar height so desktop content tucks
             // a little closer under the bar (less wasted gap).
-            exclusiveZone: Math.max(4, root.tickerBarHeight - 6)
+            exclusiveZone: Math.max(0, root.tickerBarHeight + Math.max(0, root.tickerDockOffset))
             mask: Region {}
         }
     }

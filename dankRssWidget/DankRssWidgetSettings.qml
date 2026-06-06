@@ -16,7 +16,7 @@ PluginSettings {
     // --- Header ---
     StyledText {
         width: parent.width
-        text: "RSS Widget Settings"
+        text: "Dank RSS Widget+"
         font.pixelSize: Theme.fontSizeLarge
         font.weight: Font.Bold
         color: Theme.surfaceText
@@ -869,6 +869,43 @@ PluginSettings {
         onClicked: Quickshell.execDetached(["dms", "ipc", "call", "settings", "openWith", "plugins"])
     }
 
+    // each setting below gets a per-setting reset icon (right gutter) when changed;
+    // tickerSettingsGroup.resetAll() drives the global reset button at the bottom.
+    // Inline (NOT a separate component file): DMS's plugin loader doesn't resolve
+    // sibling .qml files as types, so a custom <ResettableSetting> wouldn't load.
+    Item {
+        id: tickerSettingsGroup
+        width: parent.width
+        implicitHeight: tickerCol.height
+        height: tickerCol.height
+        property var settingItems: []
+        Component.onCompleted: {
+            var arr = [];
+            for (var i = 0; i < tickerCol.children.length; i++) {
+                var c = tickerCol.children[i];
+                if (c.value !== undefined && c.defaultValue !== undefined)
+                    arr.push(c);
+            }
+            settingItems = arr;
+        }
+        function loadValue() {
+            for (var i = 0; i < tickerCol.children.length; i++)
+                if (tickerCol.children[i].loadValue)
+                    tickerCol.children[i].loadValue();
+        }
+        function resetAll() {
+            for (var i = 0; i < tickerCol.children.length; i++) {
+                var c = tickerCol.children[i];
+                if (c.value !== undefined && c.defaultValue !== undefined && c.settingKey !== "tickerBarEnabled")
+                    c.value = c.defaultValue;
+            }
+        }
+
+        Column {
+            id: tickerCol
+            width: parent.width - 34
+            spacing: Theme.spacingM
+
     ToggleSetting {
         id: tickerToggle
         settingKey: "tickerBarEnabled"
@@ -927,6 +964,18 @@ PluginSettings {
         defaultValue: 24
         minimum: 16
         maximum: 60
+        unit: "px"
+    }
+
+    SliderSetting {
+        opacity: tickerToggle.value ? 1.0 : 0.2
+        enabled: tickerToggle.value
+        settingKey: "tickerDockOffset"
+        label: "Vertical offset (docked)"
+        description: "Nudge the docked bar up/down to align its edge with the tiled windows (no overlap)."
+        defaultValue: 0
+        minimum: -24
+        maximum: 24
         unit: "px"
     }
 
@@ -1117,6 +1166,38 @@ PluginSettings {
         settingKey: "tickerPauseOnHover"
         label: "Pause on hover"
         defaultValue: true
+    }
+
+    ToggleSetting {
+        opacity: tickerToggle.value ? 1.0 : 0.2
+        enabled: tickerToggle.value
+        settingKey: "tickerShowInOverview"
+        label: "Show in overview"
+        description: "Keep the bar visible while the compositor overview (exposé) is open. Turn off to hide it during the overview."
+        defaultValue: true
+    }
+        }   // end tickerCol Column
+
+        Repeater {
+            model: tickerSettingsGroup.settingItems
+            delegate: DankActionButton {
+                required property var modelData
+                anchors.right: tickerSettingsGroup.right
+                y: modelData ? modelData.y + (modelData.height - height) / 2 : 0
+                buttonSize: 28
+                iconName: "undo"
+                iconSize: 15
+                iconColor: Theme.surfaceVariantText
+                visible: modelData && modelData.value !== modelData.defaultValue && modelData.settingKey !== "tickerBarEnabled"
+                onClicked: if (modelData) modelData.value = modelData.defaultValue
+            }
+        }
+    }   // end tickerSettingsGroup Item
+
+    DankButton {
+        text: "Reset ticker bar to defaults"
+        iconName: "restart_alt"
+        onClicked: tickerSettingsGroup.resetAll()
     }
     }
     // ===== /Tab: Ticker bar =====
