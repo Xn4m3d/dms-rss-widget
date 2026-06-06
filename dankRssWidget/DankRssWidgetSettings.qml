@@ -1,6 +1,8 @@
 import QtQuick
 import QtQuick.Layouts
+import Quickshell
 import qs.Common
+import qs.Services
 import qs.Widgets
 import qs.Modules.Plugins
 
@@ -9,6 +11,7 @@ PluginSettings {
     pluginId: "dankRssWidget"
 
     property int editingIndex: -1
+    property int activeTab: 0   // 0 = General, 1 = Card, 2 = Ticker bar
 
     // --- Header ---
     StyledText {
@@ -32,6 +35,46 @@ PluginSettings {
         height: 1
         color: Theme.outlineVariant
     }
+
+    DankTabBar {
+        id: rssTabBar
+        width: parent.width
+        height: 48
+        model: [
+            { "text": "General", "icon": "tune" },
+            { "text": "Card", "icon": "space_dashboard" },
+            { "text": "Ticker bar", "icon": "view_stream" }
+        ]
+        onTabClicked: index => {
+            root.activeTab = index;
+            currentIndex = index;
+        }
+        Component.onCompleted: {
+            currentIndex = root.activeTab;
+            Qt.callLater(updateIndicator);
+        }
+    }
+
+    // breathing room between the tabs and the first section title
+    Item {
+        width: 1
+        height: Theme.spacingM
+    }
+
+    // ===== Tab: General =====
+    Column {
+        id: tabGeneral
+        width: parent.width
+        spacing: Theme.spacingM
+        visible: root.activeTab === 0
+        // PluginSettings.reloadChildValues only iterates DIRECT children, so the
+        // settings nested in this tab Column wouldn't reload (and would show their
+        // default instead of the stored value). Propagate loadValue to them.
+        function loadValue() {
+            for (var i = 0; i < children.length; i++)
+                if (children[i].loadValue)
+                    children[i].loadValue();
+        }
 
     // ─── Refresh Settings ───
 
@@ -688,11 +731,20 @@ PluginSettings {
         }
     }
 
-    StyledRect {
-        width: parent.width
-        height: 1
-        color: Theme.outlineVariant
     }
+    // ===== /Tab: General =====
+
+    // ===== Tab: Card =====
+    Column {
+        id: tabCard
+        width: parent.width
+        spacing: Theme.spacingM
+        visible: root.activeTab === 1
+        function loadValue() {
+            for (var i = 0; i < children.length; i++)
+                if (children[i].loadValue)
+                    children[i].loadValue();
+        }
 
     // ─── Appearance Settings ───
 
@@ -702,6 +754,13 @@ PluginSettings {
         font.pixelSize: Theme.fontSizeMedium
         font.weight: Font.Medium
         color: Theme.surfaceText
+    }
+
+    ToggleSetting {
+        settingKey: "showName"
+        label: "Show name on the card"
+        description: "Display the widget's Name (the ‘Name’ field of this desktop widget) at the top-left of the card, before the filter tags."
+        defaultValue: true
     }
 
     SliderSetting {
@@ -764,4 +823,301 @@ PluginSettings {
         ]
         defaultValue: "primary"
     }
+    }
+    // ===== /Tab: Card =====
+
+    // ===== Tab: Ticker bar =====
+    Column {
+        id: tabTicker
+        width: parent.width
+        spacing: Theme.spacingM
+        visible: root.activeTab === 2
+        function loadValue() {
+            for (var i = 0; i < children.length; i++)
+                if (children[i].loadValue)
+                    children[i].loadValue();
+        }
+
+    // ===== Ticker bar header =====
+    StyledText {
+        width: parent.width
+        text: "Scrolling ticker bar"
+        font.pixelSize: Theme.fontSizeMedium
+        font.weight: Font.Medium
+        color: Theme.surfaceText
+    }
+
+    StyledText {
+        width: parent.width
+        text: "A dedicated full-width bar that scrolls these feeds' headlines. Click a headline to open it. Uses the same items as the desktop widget — no extra fetching."
+        font.pixelSize: Theme.fontSizeSmall
+        color: Theme.surfaceVariantText
+        wrapMode: Text.WordWrap
+    }
+
+    StyledText {
+        width: parent.width
+        text: "Prefer it INSIDE the main bar (a small scrolling widget among the clock/tray)? That's a separate plugin sharing the same feeds — open it below, enable it, then add it to a bar via Settings → Bar."
+        font.pixelSize: Theme.fontSizeSmall
+        color: Theme.surfaceVariantText
+        wrapMode: Text.WordWrap
+    }
+
+    DankButton {
+        text: "Open ‘Dank RSS Ticker’ (bar widget) →"
+        iconName: "open_in_new"
+        onClicked: Quickshell.execDetached(["dms", "ipc", "call", "settings", "openWith", "plugins"])
+    }
+
+    ToggleSetting {
+        id: tickerToggle
+        settingKey: "tickerBarEnabled"
+        label: "Enable ticker bar"
+        description: "Show the scrolling headline bar on the desktop. Turning this ON switches OFF the in-bar ‘Dank RSS Ticker’ pill — only one ticker can be active at a time."
+        defaultValue: false
+    }
+    // mutual exclusion: enabling the desktop overlay turns off the bar pill plugin.
+    // Use PluginService.savePluginData (not SettingsData.setPluginSetting) so it ALSO
+    // emits pluginDataChanged → the pill actually reloads and collapses.
+    Connections {
+        target: tickerToggle
+        function onValueChanged() {
+            if (!tickerToggle.isInitialized)
+                return
+            if (tickerToggle.value)
+                PluginService.savePluginData("dankRssTicker", "pillEnabled", false)
+        }
+    }
+
+    ToggleSetting {
+        opacity: tickerToggle.value ? 1.0 : 0.2
+        enabled: tickerToggle.value
+        settingKey: "hideDesktopView"
+        label: "Hide the desktop card"
+        description: "Keep only the scrolling bar (hides the on-desktop widget, the bar stays). Tip: also enable ‘Click-through’ so the empty area doesn’t catch clicks."
+        defaultValue: false
+    }
+
+    StyledText {
+        width: parent.width
+        text: "Position: hold right-click on the bar and drag it (it magnet-snaps to the top, under the main bar, and to the screen bottom — both dock with space reserved; in between it floats behind windows)."
+        font.pixelSize: Theme.fontSizeSmall
+        color: Theme.surfaceVariantText
+        wrapMode: Text.WordWrap
+    }
+
+    SliderSetting {
+        id: widthSlider
+        opacity: tickerToggle.value ? 1.0 : 0.2
+        enabled: tickerToggle.value
+        settingKey: "tickerWidthPct"
+        label: "Bar width"
+        description: "Width of the bar as a percentage of the screen"
+        defaultValue: 100
+        minimum: 10
+        maximum: 100
+        unit: "%"
+    }
+
+    SliderSetting {
+        opacity: tickerToggle.value ? 1.0 : 0.2
+        enabled: tickerToggle.value
+        settingKey: "tickerBarHeight"
+        label: "Bar height"
+        defaultValue: 24
+        minimum: 16
+        maximum: 60
+        unit: "px"
+    }
+
+    SliderSetting {
+        opacity: tickerToggle.value ? 1.0 : 0.2
+        enabled: tickerToggle.value
+        settingKey: "tickerBgOpacity"
+        label: "Bar background opacity"
+        defaultValue: 60
+        minimum: 0
+        maximum: 100
+        unit: "%"
+    }
+
+    SliderSetting {
+        opacity: tickerToggle.value ? 1.0 : 0.2
+        enabled: tickerToggle.value
+        settingKey: "tickerCornerRadius"
+        label: "Corner radius"
+        description: "Rounded corners of the bar"
+        defaultValue: 0
+        minimum: 0
+        maximum: 30
+        unit: "px"
+    }
+
+    ToggleSetting {
+        id: tickerBorderToggle
+        opacity: tickerToggle.value ? 1.0 : 0.2
+        enabled: tickerToggle.value
+        settingKey: "tickerBorderEnabled"
+        label: "Border"
+        defaultValue: false
+    }
+
+    SliderSetting {
+        opacity: (tickerToggle.value && tickerBorderToggle.value) ? 1.0 : 0.2
+        enabled: tickerToggle.value && tickerBorderToggle.value
+        settingKey: "tickerBorderThickness"
+        label: "Border thickness"
+        defaultValue: 1
+        minimum: 1
+        maximum: 8
+        unit: "px"
+    }
+
+    SliderSetting {
+        opacity: (tickerToggle.value && tickerBorderToggle.value) ? 1.0 : 0.2
+        enabled: tickerToggle.value && tickerBorderToggle.value
+        settingKey: "tickerBorderOpacity"
+        label: "Border opacity"
+        defaultValue: 100
+        minimum: 0
+        maximum: 100
+        unit: "%"
+    }
+
+    SelectionSetting {
+        opacity: (tickerToggle.value && tickerBorderToggle.value) ? 1.0 : 0.2
+        enabled: tickerToggle.value && tickerBorderToggle.value
+        settingKey: "tickerBorderColor"
+        label: "Border color"
+        options: [
+            { label: "Primary", value: "primary" },
+            { label: "Secondary", value: "secondary" },
+            { label: "Surface", value: "surface" }
+        ]
+        defaultValue: "primary"
+    }
+
+    SliderSetting {
+        opacity: tickerToggle.value ? 1.0 : 0.2
+        enabled: tickerToggle.value
+        settingKey: "tickerTitleFontSize"
+        label: "Title font size"
+        defaultValue: 13
+        minimum: 9
+        maximum: 24
+        unit: "px"
+    }
+
+    SliderSetting {
+        opacity: tickerToggle.value ? 1.0 : 0.2
+        enabled: tickerToggle.value
+        settingKey: "tickerSourceFontSize"
+        label: "Source font size"
+        defaultValue: 13
+        minimum: 9
+        maximum: 24
+        unit: "px"
+    }
+
+    StringSetting {
+        opacity: tickerToggle.value ? 1.0 : 0.2
+        enabled: tickerToggle.value
+        settingKey: "tickerFontFamily"
+        label: "Font family"
+        description: "Leave blank to use the theme font"
+        defaultValue: ""
+        placeholder: "Inter Variable"
+    }
+
+    ToggleSetting {
+        opacity: tickerToggle.value ? 1.0 : 0.2
+        enabled: tickerToggle.value
+        settingKey: "tickerSourceBold"
+        label: "Bold source label"
+        defaultValue: true
+    }
+
+    SliderSetting {
+        opacity: tickerToggle.value ? 1.0 : 0.2
+        enabled: tickerToggle.value
+        settingKey: "tickerScrollSpeed"
+        label: "Scroll speed"
+        defaultValue: 40
+        minimum: 10
+        maximum: 160
+        unit: "px/s"
+    }
+
+    SliderSetting {
+        opacity: tickerToggle.value ? 1.0 : 0.2
+        enabled: tickerToggle.value
+        settingKey: "tickerItemSpacing"
+        label: "Spacing between headlines"
+        defaultValue: 48
+        minimum: 12
+        maximum: 160
+        unit: "px"
+    }
+
+    SelectionSetting {
+        opacity: tickerToggle.value ? 1.0 : 0.2
+        enabled: tickerToggle.value
+        settingKey: "tickerItemMode"
+        label: "Items to show"
+        description: "Latest N across all feeds, or a few per source (round-robin)."
+        options: [
+            { label: "Latest items (all feeds mixed)", value: "latest" },
+            { label: "Per source (N each)", value: "perSource" }
+        ]
+        defaultValue: "latest"
+    }
+
+    SliderSetting {
+        opacity: tickerToggle.value ? 1.0 : 0.2
+        enabled: tickerToggle.value
+        settingKey: "tickerMaxItems"
+        label: "Max items (latest mode)"
+        defaultValue: 10
+        minimum: 5
+        maximum: 80
+        unit: ""
+    }
+
+    SliderSetting {
+        opacity: tickerToggle.value ? 1.0 : 0.2
+        enabled: tickerToggle.value
+        settingKey: "tickerPerSourceCount"
+        label: "Items per source (per-source mode)"
+        defaultValue: 3
+        minimum: 1
+        maximum: 5
+        unit: ""
+    }
+
+    StringSetting {
+        opacity: tickerToggle.value ? 1.0 : 0.2
+        enabled: tickerToggle.value
+        settingKey: "tickerSeparator"
+        label: "Separator"
+        defaultValue: "•"
+        placeholder: "•"
+    }
+
+    ToggleSetting {
+        opacity: tickerToggle.value ? 1.0 : 0.2
+        enabled: tickerToggle.value
+        settingKey: "tickerShowSource"
+        label: "Show source label"
+        defaultValue: true
+    }
+
+    ToggleSetting {
+        opacity: tickerToggle.value ? 1.0 : 0.2
+        enabled: tickerToggle.value
+        settingKey: "tickerPauseOnHover"
+        label: "Pause on hover"
+        defaultValue: true
+    }
+    }
+    // ===== /Tab: Ticker bar =====
 }

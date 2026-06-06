@@ -1,65 +1,80 @@
-# Dank RSS Widget
+# Dank RSS Widget+ (v2)
 
-A desktop widget plugin for [DankMaterialShell](https://github.com/AvengeMedia/DankMaterialShell) that displays RSS and Atom feeds directly on your desktop.
+RSS and Atom feeds for [DankMaterialShell](https://github.com/AvengeMedia/DankMaterialShell), three ways:
+a desktop **card**, a full-width scrolling **ticker bar**, and an optional in-bar **pill**.
 
-> **This is a personal fork** of [`BrendonJL/dms-rss-widget`](https://github.com/BrendonJL/dms-rss-widget).
-> All credit for the original widget goes to [@BrendonJL](https://github.com/BrendonJL) — this fork only adds
-> a few fixes and personal UI tweaks on top of his work — see the **Added in this fork** list under
-> [Features](#features). The fixes and the security hardening are also being offered back upstream as separate PRs.
+> **Fork of [`BrendonJL/dms-rss-widget`](https://github.com/BrendonJL/dms-rss-widget)** by [@Xn4m3d](https://github.com/Xn4m3d).
+> v1 was BrendonJL's desktop RSS widget — all credit for the original goes to him. **v2** keeps the desktop
+> card and adds a scrolling **ticker bar** (overlay) plus an optional **bar pill companion**, on top of a set
+> of fixes and security hardening (the core fixes were also offered back upstream as PRs). Same MIT license.
+
+## What's in this repo
+
+Two DMS plugins:
+
+| Folder | Plugin | What it is |
+|--------|--------|------------|
+| `dankRssWidget/` | **Dank RSS Widget+** (`desktop`) | The desktop card **and** the full-width scrolling ticker bar (overlay) |
+| `dankRssTicker/` | **Dank RSS Widget+ (Pill companion)** (`widget`) | A small scrolling pill **inside** the DankBar, reading the same feeds |
+
+Only **one** ticker can be active at a time (the desktop overlay **or** the bar pill) — enabling one
+automatically disables the other.
 
 ## Features
 
-- RSS 2.0 and Atom feed support with auto-detection
-- Configurable auto-refresh interval (5min - 24hr)
-- Click items to open in your browser
-- Add/edit/remove feeds via the settings panel
-- OPML import for bulk feed migration
-- Quick-add presets: US/global news, tech, Reddit communities
-- Sort modes: newest first, oldest first, grouped by feed
-- Compact and expanded view modes
-- Thumbnail images from media:thumbnail, media:content, enclosures
-- Read/unread tracking with mark-all toggle
-- New item notifications via DMS toast system
-- Configurable font size
-- Appearance customization (background opacity, borders)
-- CDATA unwrapping and HTML entity decoding
-- Feed source labels per item
+### Desktop card
+- RSS 2.0 and Atom with auto-detection, configurable refresh interval (5 min – 24 h)
+- Add/edit/remove feeds, OPML import, quick-add presets (US/global news, tech, Reddit)
+- Sort modes (newest / oldest / grouped by feed), compact & expanded views, thumbnails
+- Read/unread tracking with mark-all, new-item toast notifications, per-source filter tags
+- Optional **Name** label, appearance customization (font size, background opacity, borders)
+- Settings organized in **3 tabs**: General / Card / Ticker bar
 
-**Added in this fork** (each is a self-contained commit; 🔒 🩹 🖱️ are also proposed upstream as PRs):
+### Ticker bar — overlay (new in v2)
+- Full-width scrolling headlines; reuses the card's in-memory items (no extra fetching)
+- **Docks** under the main bar or at the screen bottom (reserves space, foreground), or **floats**
+  anywhere in between (sits behind your windows)
+- **Magnet** snap to the top/bottom edges while dragging
+- Hold **right-click + drag** to move it, press **S** to toggle 100% / 50% width, with an on-screen hint
+- Tunable width, horizontal position, corner radius, border, fonts, scroll speed, item spacing
+- Latest-N items or per-source round-robin; click a headline to open it; pause on hover
 
-- 🔒 Hardened feed fetching — `curl` limited to http/https, bounded redirects & response size, parsed XML capped before regex parsing (ReDoS), and an `isSafeUrl()` allowlist for opened links & thumbnails
-- 🩹 No blank flash on resize/recreate — shows the loading state instead of an empty widget
-- 🖱️ Ignores stray clicks delivered to the background surface while the Niri overview is open
-- 💾 Instant redraw via an item cache (`~/.cache/dankRssWidget-items.json`) when the widget is recreated
-- 🎨 Slimmer top bar (no title/count), a settings button, and an animated loading spinner
-- 🏷️ Per-source filter tags — click a source to filter for 120 s, then it auto-resets to all feeds
-- 🌫️ Hold right-click + scroll to live-tune the card background opacity
+### Bar pill — companion (new in v2)
+- The same scrolling headlines as a compact widget **inside** the DankBar
+- Mutually exclusive with the desktop overlay, with shortcut buttons to jump between the two settings pages
+
+### Hardening & fixes (also offered upstream)
+- 🔒 Hardened `curl` (http/https only, bounded redirects & response size, ReDoS-capped parsing,
+  `isSafeUrl()` allowlist for opened links & thumbnails)
+- 🩹 No blank flash on resize/recreate · 🖱️ ignores stray Niri-overview clicks · 💾 item cache for instant redraw
 
 ## Installation
 
-### From the DMS Plugin Manager
-
-Search for "Dank RSS Widget" in the DMS plugin manager.
-
-### Manual Installation
-
-Clone or symlink this repo into your DMS plugins directory:
+Clone the repo and symlink **each plugin** you want into your DMS plugins directory:
 
 ```bash
-git clone https://github.com/BrendonJL/dms-rss-widget.git
-ln -s /path/to/dms-rss-widget ~/.config/DankMaterialShell/plugins/dankRssWidget
+git clone https://github.com/Xn4m3d/dms-rss-widget.git
+cd dms-rss-widget
+
+# the desktop card + ticker bar (required):
+ln -s "$PWD/dankRssWidget" ~/.config/DankMaterialShell/plugins/dankRssWidget
+
+# optional — the in-bar pill companion:
+ln -s "$PWD/dankRssTicker" ~/.config/DankMaterialShell/plugins/dankRssTicker
 ```
 
-Reload DMS (Ctrl+Shift+R) or restart your compositor.
+Reload DMS (Ctrl+Shift+R) or restart your compositor. To use the pill, add it to a bar via
+**Settings → Bar**, then enable it from its plugin settings.
 
 ## Configuration
 
-Open the widget settings to:
+Open **Settings → Desktop Widgets → Dank RSS Widget+** and use the tabs:
 
-1. **Add feeds** — Enter a name and RSS/Atom URL, or use the quick-add presets
-2. **Set refresh interval** — How often feeds are fetched (default: 30 minutes)
-3. **Max items** — Limit displayed items (default: 20)
-4. **Appearance** — Background opacity, border toggle/color/thickness
+1. **General** — add feeds (or quick-add presets / OPML), refresh interval, max items, sort order, notifications
+2. **Card** — name label, view mode, font size, background opacity, borders
+3. **Ticker bar** — enable the overlay, width/position, height, opacity, corners, border, fonts, item mode
+
+The pill has its own settings in **Settings → Plugins → Dank RSS Widget+ (Pill companion)**.
 
 ## Requirements
 
@@ -68,31 +83,15 @@ Open the widget settings to:
 
 ## Testing
 
-The core feed-parsing logic is extracted into a standalone JS module (`tests/feed-parser.js`) that mirrors the functions in `DankRssWidget.qml`. This allows unit testing with Node.js without needing the QML runtime.
-
-### Running Tests
+The core feed-parsing logic is mirrored in a standalone JS module
+(`dankRssWidget/feed-parser-tests/feed-parser.js`) so it can be unit-tested with Node.js without the QML runtime.
 
 ```bash
-node --test tests/feed-parser.test.js
+node --test dankRssWidget/feed-parser-tests/feed-parser.test.js
 ```
 
-Requires Node.js 18+ (uses the built-in `node:test` runner).
-
-### Test Coverage
-
-60 tests across 9 suites covering:
-
-| Suite | Tests | What it covers |
-|-------|-------|----------------|
-| `extractTag` | 6 | XML tag extraction, CDATA, attributes, case-insensitivity |
-| `cleanText` | 9 | HTML entity decoding (`&amp;`, `&lt;`, `&#x...;`, `&#...;`), whitespace collapsing |
-| `stripHtml` | 5 | HTML tag removal, self-closing tags, attributes |
-| `getRelativeTime` | 6 | Relative timestamps (just now, Xm/h/d ago), locale fallback |
-| `extractImageUrl` | 9 | media:thumbnail, media:content, enclosure, inline img, entity decoding |
-| `parseRssFeed` | 9 | Full RSS 2.0 parsing, CDATA titles, entity descriptions, image extraction |
-| `parseAtomFeed` | 6 | Atom feed parsing, alternate link preference, updated/published dates |
-| `parseFeed` | 2 | Auto-detection of RSS vs Atom format |
-| `parseOpml` | 7 | OPML import, feed name/URL extraction, entity decoding |
+Requires Node.js 18+ (uses the built-in `node:test` runner). 60 tests across 9 suites cover tag
+extraction, CDATA, HTML entity decoding, RSS/Atom parsing, image extraction, relative timestamps and OPML import.
 
 ## Screenshots
 
@@ -106,4 +105,4 @@ Requires Node.js 18+ (uses the built-in `node:test` runner).
 
 MIT — the original work is © [@BrendonJL](https://github.com/BrendonJL) and contributors
 (see the [upstream repository](https://github.com/BrendonJL/dms-rss-widget)). Changes in this
-fork are contributed under the same MIT license.
+fork are released under the same MIT license.

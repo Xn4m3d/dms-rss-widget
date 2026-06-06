@@ -3,6 +3,8 @@ import QtQuick.Layouts
 import QtQml
 import Quickshell
 import Quickshell.Io
+import Quickshell.Wayland
+import Quickshell.Hyprland
 import qs.Common
 import qs.Services
 import qs.Widgets
@@ -28,6 +30,113 @@ DesktopPluginComponent {
     property string viewMode: pluginData.viewMode ?? "expanded"  // "compact" or "expanded"
     property int fontSize: pluginData.fontSize ?? Theme.fontSizeSmall
     property bool notifyNewItems: pluginData.notifyNewItems ?? true
+    // [patch:ui] show the instance "Name" (from the DMS desktop-widget settings)
+    // on the card, left of the filter tags. Toggle to hide it.
+    property bool showName: pluginData.showName ?? true
+    readonly property string instanceName: root.instanceData ? (root.instanceData.name ?? "") : ""
+
+    // [patch:tickerbar] optional full-width scrolling headline bar (a layer-shell
+    // surface hosted by this desktop plugin). All options live here / in settings.
+    property bool hideDesktopView: pluginData.hideDesktopView ?? false   // hide the on-desktop card, keep the bar
+    property bool tickerBarEnabled: pluginData.tickerBarEnabled ?? false
+    // single placement model: a top overlay positioned anywhere via the vertical
+    // % (docked at 0 = foreground + reserves; detached > 0 = background). The
+    // placement/layer pickers were removed from settings.
+    readonly property string tickerPlacement: "below"
+    readonly property bool tickerLayerForeground: (pluginData.tickerLayer ?? "foreground") === "foreground"
+    // [patch:tickerbar] "below" is always foreground: a background ticker tucked
+    // under the top bar would be permanently hidden behind windows. The layer
+    // choice therefore only applies to "bottom" placement.
+    readonly property bool tickerForeground: root.tickerPlacement === "below" ? true : root.tickerLayerForeground
+    // [patch:tickerbar] reliable "below": position the bar explicitly just under
+    // the main DankBar (mirrors its reserved height) instead of relying on
+    // exclusive-zone stacking, which is unreliable for a window hosted inside the
+    // desktop-widget surface.
+    readonly property var _mainBar: (SettingsData.barConfigs && SettingsData.barConfigs.length > 0) ? SettingsData.barConfigs[0] : null
+    readonly property int _mbInnerPad: _mainBar ? (_mainBar.innerPadding ?? 4) : 4
+    readonly property real _mbWidgetThk: Math.max(20, 26 + _mbInnerPad * 0.6)
+    readonly property real _mbThk: Math.max(_mbWidgetThk + _mbInnerPad + 4, Theme.barHeight - 4 - (8 - _mbInnerPad))
+    readonly property bool _mbTopVisible: _mainBar ? ((_mainBar.position ?? 0) === 0 && (_mainBar.visible ?? true)) : true
+    readonly property real mainBarReserved: _mbTopVisible ? (_mbThk + (_mainBar ? (_mainBar.spacing ?? 4) : 4) + (_mainBar ? (_mainBar.bottomGap ?? 0) : 0)) : 0
+    property int tickerEdgeMargin: pluginData.tickerEdgeMargin ?? 0
+    property int tickerBarHeight: pluginData.tickerBarHeight ?? 24
+    property real tickerBgOpacity: (pluginData.tickerBgOpacity ?? 60) / 100
+    property int tickerTitleFontSize: pluginData.tickerTitleFontSize ?? 13
+    property int tickerSourceFontSize: pluginData.tickerSourceFontSize ?? 13
+    property string tickerFontFamily: (pluginData.tickerFontFamily && pluginData.tickerFontFamily.length > 0) ? pluginData.tickerFontFamily : Theme.fontFamily
+    property bool tickerSourceBold: pluginData.tickerSourceBold ?? true
+    property int tickerScrollSpeed: pluginData.tickerScrollSpeed ?? 40
+    property real tickerItemSpacing: pluginData.tickerItemSpacing ?? 48
+    property string tickerItemMode: pluginData.tickerItemMode ?? "latest"          // "latest" | "perSource"
+    property int tickerMaxItems: pluginData.tickerMaxItems ?? 10
+    property int tickerPerSourceCount: pluginData.tickerPerSourceCount ?? 3
+    property string tickerSeparator: pluginData.tickerSeparator ?? "•"
+    property bool tickerShowSource: pluginData.tickerShowSource ?? true
+    property bool tickerPauseOnHover: pluginData.tickerPauseOnHover ?? true
+    property bool tickerHovered: false
+    // [patch:tickerbar] size / position / style
+    property real tickerWidthPct: pluginData.tickerWidthPct ?? 100         // % of screen width
+    property real tickerHorizontalPct: pluginData.tickerHorizontalPct ?? 50   // 0=left .. 100=right (when width<100)
+    property real tickerVerticalPct: pluginData.tickerVerticalPct ?? 0     // "below": 0=just under main bar .. 100=screen bottom
+    property int tickerCornerRadius: pluginData.tickerCornerRadius ?? 0
+    property bool tickerBorderEnabled: pluginData.tickerBorderEnabled ?? false
+    property int tickerBorderThickness: pluginData.tickerBorderThickness ?? 1
+    property real tickerBorderOpacity: (pluginData.tickerBorderOpacity ?? 100) / 100
+    property string tickerBorderColor: pluginData.tickerBorderColor ?? "primary"
+    readonly property color tickerResolvedBorderColor: {
+        switch (root.tickerBorderColor) {
+            case "secondary": return Theme.secondary;
+            case "surface": return Theme.surfaceText;
+            default: return Theme.primary;
+        }
+    }
+    // pause scrolling while dragging position/size (avoids jank/latency)
+    property bool _tickerAdjusting: false
+    function _tickerMarkAdjusting() { root._tickerAdjusting = true; tickerAdjustTimer.restart(); }
+    Timer { id: tickerAdjustTimer; interval: 350; onTriggered: root._tickerAdjusting = false }
+    // live drag overrides: avoid persisting on every mouse move; persist on
+    // release. -1 means "use the stored value".
+    property real _tickerVLive: -1
+    property real _tickerHLive: -1
+    property real _tickerWLive: -1
+    readonly property real effTickerVPct: _tickerVLive >= 0 ? _tickerVLive : root.tickerVerticalPct
+    readonly property real effTickerHPct: _tickerHLive >= 0 ? _tickerHLive : root.tickerHorizontalPct
+    readonly property real effTickerWPct: _tickerWLive >= 0 ? _tickerWLive : root.tickerWidthPct
+    onTickerVerticalPctChanged: { _tickerVLive = -1; _tickerMarkAdjusting(); }
+    onTickerHorizontalPctChanged: { _tickerHLive = -1; _tickerMarkAdjusting(); }
+    onTickerWidthPctChanged: { _tickerWLive = -1; _tickerMarkAdjusting(); }
+    onTickerBarHeightChanged: _tickerMarkAdjusting()
+    // ticker edit mode (right-click held on the bar): drag = move, S = toggle
+    // width 100/50%, left-click an edge = resize. State on root so the title
+    // MouseAreas (inside an inline Component, where only `root` resolves) can
+    // disable themselves while editing.
+    property bool tickerEditing: false
+    property bool tickerResizing: false
+    property var tickerItems: []
+    // [patch:tickerbar] derive the scrolling list from the in-memory feedItems
+    // (no extra fetch) per the chosen item mode.
+    function rebuildTicker() {
+        var src = root.feedItems || [];
+        if (root.tickerItemMode === "perSource") {
+            var bySrc = {}, order = [];
+            for (var i = 0; i < src.length; i++) {
+                var s = src[i].source || "";
+                if (!bySrc[s]) { bySrc[s] = []; order.push(s); }
+                bySrc[s].push(src[i]);
+            }
+            var out = [];
+            for (var k = 0; k < root.tickerPerSourceCount; k++)
+                for (var o = 0; o < order.length; o++)
+                    if (bySrc[order[o]][k]) out.push(bySrc[order[o]][k]);
+            root.tickerItems = out;
+        } else {
+            root.tickerItems = src.slice(0, root.tickerMaxItems);
+        }
+    }
+    onFeedItemsChanged: rebuildTicker()
+    onTickerItemModeChanged: rebuildTicker()
+    onTickerMaxItemsChanged: rebuildTicker()
+    onTickerPerSourceCountChanged: rebuildTicker()
 
     // --- Internal state ---
     property var feedItems: []
@@ -483,6 +592,7 @@ DesktopPluginComponent {
     // --- UI ---
     Rectangle {
         anchors.fill: parent
+        visible: !root.hideDesktopView   // [patch:tickerbar] hide the on-desktop card while keeping the bar alive
         radius: Theme.cornerRadius
         color: Theme.withAlpha(Theme.surfaceContainer, root.effectiveBackgroundOpacity)   // [patch:opacity] live-tunable card fill
         border.width: root.enableBorder ? root.borderThickness : 0
@@ -518,6 +628,18 @@ DesktopPluginComponent {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Theme.spacingXS
+
+                // [patch:ui] instance "Name" (from DMS desktop-widget settings), left of the tags
+                StyledText {
+                    visible: root.showName && root.instanceName.length > 0
+                    text: root.instanceName
+                    font.pixelSize: root.fontSize
+                    font.weight: Font.Medium
+                    color: Theme.surfaceText
+                    elide: Text.ElideRight
+                    Layout.maximumWidth: 140
+                    Layout.alignment: Qt.AlignVCenter
+                }
 
                 // [patch:filter] One tag per source. Click a tag to show only that feed for
                 // 120 s (then it auto-resets to all). Scrolls horizontally when many feeds.
@@ -923,6 +1045,356 @@ DesktopPluginComponent {
 
                 Item { Layout.fillHeight: true }
             }
+        }
+    }
+
+    // [patch:tickerbar] the optional full-width scrolling headline bar.
+    // Gated on tickerBarEnabled + a real on-desktop instance (so it never
+    // spawns from a non-instance/global context). Reuses root.feedItems.
+    Variants {
+        model: (root.tickerBarEnabled && root.isInstance) ? Quickshell.screens : []
+
+        PanelWindow {
+            required property var modelData
+            screen: modelData
+
+            id: win
+            readonly property bool below: root.tickerPlacement === "below"
+            // docked = stuck right under the main bar (vertical position ~0).
+            // Based on the STORED value so the layer settles on release (not during
+            // a live drag, which can't re-commit a surface mid-grab).
+            readonly property bool dockedTop: below && root.tickerVerticalPct < 1
+            readonly property bool dockedBottom: below && root.tickerVerticalPct > 99
+            readonly property bool docked: dockedTop || dockedBottom
+            onDockedChanged: win._recommit()
+
+            WlrLayershell.namespace: "dms:rss-ticker-bar"
+            // "below" docked under the main bar → Overlay (foreground, above ALL
+            // windows incl. fullscreen) + a reservation spacer. "below" detached
+            // (floating) → Bottom (behind windows). "bottom" → Top (reserves) or
+            // Bottom (background).
+            // docked → Top (above normal windows, but bar popouts/menus that open
+            // afterwards stack above it, so they're not covered). detached → Bottom
+            // (behind windows). "bottom" placement → Top/Bottom per foreground.
+            WlrLayershell.layer: win.below ? (win.docked ? WlrLayer.Top : WlrLayer.Bottom) : (root.tickerForeground ? WlrLayer.Top : WlrLayer.Bottom)
+            // proven DMS pattern (cf. desktop-widget grid 'G' key): Exclusive
+            // keyboard focus while editing (OnDemand when Hyprland uses a focus
+            // grab), so the 'S' key reaches us.
+            WlrLayershell.keyboardFocus: {
+                if (root.tickerEditing)
+                    return CompositorService.useHyprlandFocusGrab ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.Exclusive;
+                return WlrKeyboardFocus.None;
+            }
+
+            color: "transparent"
+            // "below": a full-screen transparent overlay; the strip is positioned
+            // by QML at the main bar's height — deterministic, unlike layer-shell
+            // exclusive-zone stacking which raced/overlapped here. "bottom": a real
+            // edge-anchored bar that reserves its strip (when foreground).
+            anchors {
+                top: win.below
+                bottom: true
+                left: true
+                right: true
+            }
+            margins.bottom: 0
+            implicitHeight: win.below ? (win.screen ? win.screen.height : 1080) : root.tickerBarHeight
+            exclusiveZone: win.below ? -1 : (root.tickerForeground ? root.tickerBarHeight : -1)
+            // Only the visible strip captures input; the rest of a full-screen
+            // "below" overlay is click-through.
+            mask: Region { item: tickerStrip }
+
+            // Re-commit the layer-shell surface when the layer/placement changes
+            // live — otherwise the compositor keeps the old layer (e.g. a top bar
+            // switched from "background" stays stuck behind windows).
+            function _recommit() {
+                win.visible = false;
+                recommitTimer.restart();
+            }
+            Timer {
+                id: recommitTimer
+                interval: 40
+                onTriggered: win.visible = true
+            }
+            Connections {
+                target: root
+                function onTickerForegroundChanged() { win._recommit(); }
+                function onTickerPlacementChanged() { win._recommit(); }
+            }
+
+            HyprlandFocusGrab {
+                active: CompositorService.isHyprland && root.tickerEditing
+                windows: [win]
+            }
+
+            Item {
+                id: tickerStrip
+                width: Math.round(win.width * (root.effTickerWPct / 100))
+                x: Math.round((win.width - width) * (root.effTickerHPct / 100))
+                height: root.tickerBarHeight
+                // "below": full-screen window; the strip moves vertically from just
+                // under the main bar (0%) to the screen bottom (100%), never past
+                // the system bar. "bottom": short window, strip fills it.
+                y: {
+                    if (!win.below)
+                        return 0;
+                    var avail = Math.max(0, win.height - root.mainBarReserved - root.tickerBarHeight);
+                    return Math.round(root.mainBarReserved + avail * (root.effTickerVPct / 100));
+                }
+
+            Rectangle {
+                anchors.fill: parent
+                radius: root.tickerCornerRadius
+                color: Theme.withAlpha(Theme.surfaceContainer, root.tickerBgOpacity)
+                border.width: root.tickerBorderEnabled ? root.tickerBorderThickness : 0
+                border.color: Theme.withAlpha(root.tickerResolvedBorderColor, root.tickerBorderOpacity)
+            }
+
+            // [patch:tickerbar] edit mode — sits UNDER the headlines (which keep
+            // their own click-to-open MouseAreas, disabled while editing). Right
+            // press = grab (titles ignore right → it falls through here).
+            MouseArea {
+                id: editArea
+                anchors.fill: parent
+                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                hoverEnabled: true
+                cursorShape: root.tickerEditing ? Qt.SizeAllCursor : Qt.ArrowCursor
+
+                property real grabDX: 0
+                property real grabDY: 0
+
+                onPressed: mouse => {
+                    if (mouse.button === Qt.RightButton && win.below) {
+                        root.tickerEditing = true;
+                        root.tickerHovered = true;
+                        keyCatcher.forceActiveFocus();
+                        var g = editArea.mapToItem(null, mouse.x, mouse.y);
+                        editArea.grabDX = g.x - tickerStrip.x;
+                        editArea.grabDY = g.y - tickerStrip.y;
+                        root._tickerMarkAdjusting();
+                        mouse.accepted = true;
+                    } else {
+                        mouse.accepted = false;
+                    }
+                }
+
+                onPositionChanged: mouse => {
+                    if (!root.tickerEditing)
+                        return;
+                    var g = editArea.mapToItem(null, mouse.x, mouse.y);
+                    root._tickerMarkAdjusting();
+                    var availY = Math.max(1, win.height - root.mainBarReserved - root.tickerBarHeight);
+                    var vraw = Math.max(0, Math.min(100, ((g.y - editArea.grabDY) - root.mainBarReserved) / availY * 100));
+                    var snap = 3;   // tight magnet: snaps to the main bar (0) / screen bottom (100) only when close
+                    if (vraw < snap)
+                        vraw = 0;
+                    else if (vraw > 100 - snap)
+                        vraw = 100;
+                    root._tickerVLive = vraw;
+                    if (root.effTickerWPct < 100) {
+                        var availX = Math.max(1, win.width - tickerStrip.width);
+                        root._tickerHLive = Math.max(0, Math.min(100, (g.x - editArea.grabDX) / availX * 100));
+                    }
+                }
+
+                onReleased: mouse => {
+                    if (mouse.button === Qt.RightButton && root.tickerEditing) {
+                        if (root._tickerVLive >= 0) root.setData("tickerVerticalPct", Math.round(root._tickerVLive));
+                        if (root._tickerHLive >= 0) root.setData("tickerHorizontalPct", Math.round(root._tickerHLive));
+                        if (root._tickerWLive >= 0) root.setData("tickerWidthPct", Math.round(root._tickerWLive));
+                        root.tickerEditing = false;
+                        root.tickerHovered = false;
+                    }
+                }
+            }
+
+            Item {
+                id: tband
+                anchors.fill: parent
+                anchors.leftMargin: Theme.spacingM
+                anchors.rightMargin: Theme.spacingM
+                clip: true
+
+                property real offset: 0
+                readonly property real loopWidth: ttrackA.width + root.tickerItemSpacing / 2
+
+                StyledText {
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: root.tickerItems.length === 0
+                    text: "RSS…"
+                    font.pixelSize: root.tickerTitleFontSize
+                    font.family: root.tickerFontFamily
+                    color: Theme.surfaceVariantText
+                    opacity: 0.7
+                }
+
+                // inline Component: inside it only the top-level `root` id resolves
+                // reliably (nested ids like `tband` do not) -> reference root.* only.
+                Component {
+                    id: ttrack
+                    Row {
+                        spacing: root.tickerItemSpacing / 2
+                        Repeater {
+                            model: root.tickerItems
+                            Row {
+                                spacing: 0
+                                Row {
+                                    spacing: Theme.spacingXS
+                                    StyledText {
+                                        visible: root.tickerShowSource && !!modelData.source
+                                        text: modelData.source ? (modelData.source + ":") : ""
+                                        font.pixelSize: root.tickerSourceFontSize
+                                        font.family: root.tickerFontFamily
+                                        font.weight: root.tickerSourceBold ? Font.Bold : Font.Normal
+                                        color: Theme.primary
+                                        verticalAlignment: Text.AlignVCenter
+                                    }
+                                    StyledText {
+                                        text: ("" + (modelData.title || "")).replace(/\s+/g, " ").trim()
+                                        font.pixelSize: root.tickerTitleFontSize
+                                        font.family: root.tickerFontFamily
+                                        color: Theme.surfaceText
+                                        verticalAlignment: Text.AlignVCenter
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            enabled: !root.tickerEditing
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                if (root.isSafeUrl(modelData.link))
+                                                    Quickshell.execDetached(["xdg-open", modelData.link]);
+                                            }
+                                        }
+                                    }
+                                }
+                                // half-gap before the separator; the outer Row's
+                                // spacing gives the matching half-gap after it, so
+                                // the separator sits centered between headlines.
+                                Item { width: root.tickerItemSpacing / 2; height: 1 }
+                                StyledText {
+                                    text: root.tickerSeparator
+                                    font.pixelSize: root.tickerTitleFontSize
+                                    font.family: root.tickerFontFamily
+                                    color: Theme.surfaceVariantText
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Loader {
+                    id: ttrackA
+                    visible: root.tickerItems.length > 0
+                    anchors.verticalCenter: parent.verticalCenter
+                    x: -tband.offset
+                    sourceComponent: ttrack
+                }
+                Loader {
+                    id: ttrackB
+                    visible: root.tickerItems.length > 0
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.left: ttrackA.right
+                    anchors.leftMargin: root.tickerItemSpacing / 2
+                    sourceComponent: ttrack
+                }
+
+                FrameAnimation {
+                    running: root.tickerItems.length > 0 && tband.loopWidth > 0 && !root._tickerAdjusting && !(root.tickerPauseOnHover && root.tickerHovered)
+                    onTriggered: {
+                        tband.offset += root.tickerScrollSpeed * frameTime;
+                        if (tband.offset >= tband.loopWidth)
+                            tband.offset -= tband.loopWidth;
+                    }
+                }
+            }
+
+            // [patch:tickerbar] single hover zone ON TOP (NoButton → clicks and the
+            // right-drag grab pass through to the headlines / editArea below). Fixes
+            // pause-on-hover over titles (the per-title + editArea hover handlers
+            // fought, so a title hover ended up clearing the flag).
+            MouseArea {
+                anchors.fill: parent
+                z: 100
+                acceptedButtons: Qt.NoButton
+                hoverEnabled: true
+                cursorShape: root.tickerEditing ? Qt.SizeAllCursor : Qt.ArrowCursor
+                onContainsMouseChanged: root.tickerHovered = containsMouse
+            }
+            }
+
+            // [patch:tickerbar] catches 'S' while editing → toggle width 100/50%
+            Item {
+                id: keyCatcher
+                focus: root.tickerEditing
+                Keys.onPressed: event => {
+                    if (root.tickerEditing && event.key === Qt.Key_S) {
+                        root.setData("tickerWidthPct", root.effTickerWPct >= 100 ? 50 : 100);
+                        event.accepted = true;
+                    }
+                }
+            }
+
+            // [patch:tickerbar] shortcuts hint, shown bottom-center while editing
+            // (right-click held), like the desktop card edit hint.
+            Rectangle {
+                visible: root.tickerEditing && win.below
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: 48
+                width: hintRow.implicitWidth + Theme.spacingL * 2
+                height: hintRow.implicitHeight + Theme.spacingM * 2
+                radius: Theme.cornerRadius
+                color: Theme.withAlpha(Theme.surfaceContainer, 0.96)
+                border.width: 1
+                border.color: Theme.withAlpha(Theme.primary, 0.6)
+
+                Row {
+                    id: hintRow
+                    anchors.centerIn: parent
+                    spacing: Theme.spacingL
+                    StyledText {
+                        text: "↕ Drag: move" + (root.effTickerWPct < 100 ? " (free)" : "")
+                        font.pixelSize: Theme.fontSizeSmall
+                        color: Theme.surfaceText
+                    }
+                    StyledText {
+                        text: "S: width 100% ⇄ 50%"
+                        font.pixelSize: Theme.fontSizeSmall
+                        color: Theme.surfaceText
+                    }
+                }
+            }
+        }
+    }
+
+    // [patch:tickerbar] reservation spacer: when the bar is docked under the main
+    // bar (placement "below" + vertical position ~0), a thin invisible top bar
+    // reserves barHeight so windows tile BELOW the ticker — its exclusive zone
+    // sums with the main bar's. The visible bar stays the deterministic overlay.
+    Variants {
+        model: (root.tickerBarEnabled && root.isInstance && root.tickerPlacement === "below" && (root.tickerVerticalPct < 1 || root.tickerVerticalPct > 99)) ? Quickshell.screens : []
+
+        PanelWindow {
+            required property var modelData
+            screen: modelData
+            WlrLayershell.namespace: "dms:rss-ticker-spacer"
+            WlrLayershell.layer: WlrLayer.Top
+            WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+            color: "transparent"
+            // anchor to whichever edge the bar is docked against (top under the
+            // main bar, or the screen bottom) → reserves that strip.
+            anchors {
+                top: root.tickerVerticalPct < 1
+                bottom: root.tickerVerticalPct > 99
+                left: true
+                right: true
+            }
+            implicitHeight: root.tickerBarHeight
+            // reserve a few px less than the bar height so desktop content tucks
+            // a little closer under the bar (less wasted gap).
+            exclusiveZone: Math.max(4, root.tickerBarHeight - 6)
+            mask: Region {}
         }
     }
 }
