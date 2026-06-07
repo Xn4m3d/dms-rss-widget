@@ -51,7 +51,7 @@ The ticker stays consistent with where you put your DankBar:
 |----------|------------|
 | **Top** | docks just under it (reserves space) |
 | **Bottom** | follows it — docks just **above** it (reserves space) |
-| **Left / Right** (vertical) | sits at the top of the screen, width reduced to the area **beside** the bar; it does **not** reserve height there (so the vertical bar keeps full height), and the **pill mode is disabled** |
+| **Left / Right** (vertical) | docks at the top **or** bottom of the screen, width reduced to the area **beside** the bar — and reserves just that strip (the vertical bar keeps its full height, no corner gap); the **pill mode is disabled** |
 
 Moving the bar — even **live**, from the DankBar settings — re-settles the ticker automatically: it
 follows to the new edge without overlapping or shoving the bar around.

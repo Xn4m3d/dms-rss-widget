@@ -1478,10 +1478,7 @@ DesktopPluginComponent {
     // reserves barHeight so windows tile BELOW the ticker — its exclusive zone
     // sums with the main bar's. The visible bar stays the deterministic overlay.
     Variants {
-        // no reservation when the main bar is vertical (left/right): a full-width top/
-        // bottom spacer would push the vertical bar down and leave a corner gap. The
-        // ticker just overlays (foreground) there, letting the vertical bar fill 100%.
-        model: (root.tickerBarEnabled && root.isInstance && root._instanceEnabled && !root._mbVertical && !root._spacerSettling && (root.tickerDockedScreenTop || root.tickerDockedScreenBottom)) ? Quickshell.screens : []
+        model: (root.tickerBarEnabled && root.isInstance && root._instanceEnabled && !root._spacerSettling && (root.tickerDockedScreenTop || root.tickerDockedScreenBottom)) ? Quickshell.screens : []
 
         PanelWindow {
             required property var modelData
@@ -1491,12 +1488,17 @@ DesktopPluginComponent {
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
             color: "transparent"
             // anchor to whichever SCREEN edge the bar is docked against → reserves that strip.
+            // Inset by a left/right main bar's width so the spacer only covers the BAND
+            // (beside the vertical bar) — reserving the corner above it would shove the
+            // vertical bar inward (margins are 0 for a top/bottom bar → full width).
             anchors {
                 top: root.tickerDockedScreenTop
                 bottom: root.tickerDockedScreenBottom
                 left: true
                 right: true
             }
+            margins.left: root.mainBarReservedLeft
+            margins.right: root.mainBarReservedRight
             implicitHeight: root.tickerBarHeight
             // reserve a few px less than the bar height so desktop content tucks
             // a little closer under the bar (less wasted gap).
