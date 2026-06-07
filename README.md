@@ -99,6 +99,8 @@ extraction, CDATA, HTML entity decoding, RSS/Atom parsing, image extraction, rel
 
 ![The ticker bar and desktop card on another setup](screenshots/screen2.png)
 
+![Pill mode — the ticker running as a compact pill in the main bar](screenshots/pill-plugin.png)
+
 ![Settings — General, Card and Ticker bar tabs (plus the pill companion)](screenshots/settings.png)
 
 ![The in-bar pill companion and its settings](screenshots/pill.png)
