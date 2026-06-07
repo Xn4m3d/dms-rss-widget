@@ -95,11 +95,13 @@ extraction, CDATA, HTML entity decoding, RSS/Atom parsing, image extraction, rel
 
 ## Screenshots
 
-![Feeds on the desktop (expanded view)](screenshots/screenshot-1.png)
+![Desktop card and the full-width scrolling ticker bar](screenshots/screen1.png)
 
-![Clickable per-source filter tags](screenshots/screenshot-2.png)
+![The ticker bar and desktop card on another setup](screenshots/screen2.png)
 
-![Item thumbnails](screenshots/screenshot-3.png)
+![Settings — General, Card and Ticker bar tabs (plus the pill companion)](screenshots/settings.png)
+
+![The in-bar pill companion and its settings](screenshots/pill.png)
 
 ## License
 
