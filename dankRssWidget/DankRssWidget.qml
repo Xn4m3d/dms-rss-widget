@@ -39,15 +39,9 @@ DesktopPluginComponent {
     // surface hosted by this desktop plugin). All options live here / in settings.
     property bool hideDesktopView: pluginData.hideDesktopView ?? false   // hide the on-desktop card, keep the bar
     property bool tickerBarEnabled: pluginData.tickerBarEnabled ?? false
-    // single placement model: a top overlay positioned anywhere via the vertical
-    // % (docked at 0 = foreground + reserves; detached > 0 = background). The
-    // placement/layer pickers were removed from settings.
-    readonly property string tickerPlacement: "below"
-    readonly property bool tickerLayerForeground: (pluginData.tickerLayer ?? "foreground") === "foreground"
-    // [patch:tickerbar] "below" is always foreground: a background ticker tucked
-    // under the top bar would be permanently hidden behind windows. The layer
-    // choice therefore only applies to "bottom" placement.
-    readonly property bool tickerForeground: root.tickerPlacement === "below" ? true : root.tickerLayerForeground
+    // single placement model: a full-screen top overlay; the strip is positioned via
+    // the vertical % (docked at 0/100 = foreground + reserves space; detached in
+    // between = background). No placement/layer picker (those were dropped).
     // [patch:tickerbar] reliable "below": position the bar explicitly just under
     // the main DankBar (mirrors its reserved height) instead of relying on
     // exclusive-zone stacking, which is unreliable for a window hosted inside the
@@ -58,7 +52,6 @@ DesktopPluginComponent {
     readonly property real _mbThk: Math.max(_mbWidgetThk + _mbInnerPad + 4, Theme.barHeight - 4 - (8 - _mbInnerPad))
     readonly property bool _mbTopVisible: _mainBar ? ((_mainBar.position ?? 0) === 0 && (_mainBar.visible ?? true)) : true
     readonly property real mainBarReserved: _mbTopVisible ? (_mbThk + (_mainBar ? (_mainBar.spacing ?? 4) : 4) + (_mainBar ? (_mainBar.bottomGap ?? 0) : 0)) : 0
-    property int tickerEdgeMargin: pluginData.tickerEdgeMargin ?? 0
     property int tickerBarHeight: pluginData.tickerBarHeight ?? 24
     property real tickerBgOpacity: (pluginData.tickerBgOpacity ?? 60) / 100
     property int tickerTitleFontSize: pluginData.tickerTitleFontSize ?? 13
@@ -376,7 +369,7 @@ DesktopPluginComponent {
         // overlapping runs let the 2nd run mutate the shared, persistent debounce entry that the
         // 1st (already-launched) proc still referenced, so one feed's items got pushed twice.
         Proc.runCommand(null, ["curl", "-sS", "--connect-timeout", "5", "--max-time", "10", "-L", "--proto", "=http,https", "--proto-redir", "=http,https", "--max-redirs", "5", "--max-filesize", "5000000", "-A", "Mozilla/5.0 (X11; Linux x86_64) DankRssWidget/1.0", url], function(output, exitCode) {  // [patch:secure] http(s) only, bound redirects + size
-            if (seq !== root._fetchSeq)   // [patch:dedup] a newer fetch started -> drop this stale result
+            if (!root || seq !== root._fetchSeq)   // [patch:dedup] drop stale results — or bail if the component was torn down mid-fetch (root null)
                 return;
             if (exitCode === 0 && output && output.trim().length > 0) {
                 var body = (output.length > 5000000) ? output.slice(0, 5000000) : output;  // [patch:secure] bound XML size (ReDoS)
@@ -1083,24 +1076,19 @@ DesktopPluginComponent {
             screen: modelData
 
             id: win
-            readonly property bool below: root.tickerPlacement === "below"
-            // docked = stuck right under the main bar (vertical position ~0).
-            // Based on the STORED value so the layer settles on release (not during
-            // a live drag, which can't re-commit a surface mid-grab).
-            readonly property bool dockedTop: below && root.tickerVerticalPct < 1
-            readonly property bool dockedBottom: below && root.tickerVerticalPct > 99
+            // docked = stuck right under the main bar (vertical position ~0) or at the
+            // screen bottom (~100). Based on the STORED value so the layer settles on
+            // release (not during a live drag, which can't re-commit a surface mid-grab).
+            readonly property bool dockedTop: root.tickerVerticalPct < 1
+            readonly property bool dockedBottom: root.tickerVerticalPct > 99
             readonly property bool docked: dockedTop || dockedBottom
             onDockedChanged: win._recommit()
 
             WlrLayershell.namespace: "dms:rss-ticker-bar"
-            // "below" docked under the main bar → Overlay (foreground, above ALL
-            // windows incl. fullscreen) + a reservation spacer. "below" detached
-            // (floating) → Bottom (behind windows). "bottom" → Top (reserves) or
-            // Bottom (background).
-            // docked → Top (above normal windows, but bar popouts/menus that open
-            // afterwards stack above it, so they're not covered). detached → Bottom
-            // (behind windows). "bottom" placement → Top/Bottom per foreground.
-            WlrLayershell.layer: win.below ? (win.docked ? WlrLayer.Top : WlrLayer.Bottom) : (root.tickerForeground ? WlrLayer.Top : WlrLayer.Bottom)
+            // docked → Top (above normal windows; bar popouts/menus that open afterwards
+            // stack above it, so they're not covered) + a reservation spacer. detached
+            // (floating) → Bottom (behind windows).
+            WlrLayershell.layer: win.docked ? WlrLayer.Top : WlrLayer.Bottom
             // proven DMS pattern (cf. desktop-widget grid 'G' key): Exclusive
             // keyboard focus while editing (OnDemand when Hyprland uses a focus
             // grab), so the 'S' key reaches us.
@@ -1111,19 +1099,19 @@ DesktopPluginComponent {
             }
 
             color: "transparent"
-            // "below": a full-screen transparent overlay; the strip is positioned
-            // by QML at the main bar's height — deterministic, unlike layer-shell
-            // exclusive-zone stacking which raced/overlapped here. "bottom": a real
-            // edge-anchored bar that reserves its strip (when foreground).
+            // A full-screen transparent overlay; the strip is positioned by QML at the
+            // main bar's height — deterministic, unlike layer-shell exclusive-zone
+            // stacking which raced/overlapped here. A separate spacer window reserves
+            // the docked strip's height.
             anchors {
-                top: win.below
+                top: true
                 bottom: true
                 left: true
                 right: true
             }
             margins.bottom: 0
-            implicitHeight: win.below ? (win.screen ? win.screen.height : 1080) : root.tickerBarHeight
-            exclusiveZone: win.below ? -1 : (root.tickerForeground ? root.tickerBarHeight : -1)
+            implicitHeight: win.screen ? win.screen.height : 1080
+            exclusiveZone: -1
             // Only the visible strip captures input; the rest of a full-screen
             // "below" overlay is click-through.
             mask: Region { item: tickerStrip }
@@ -1158,12 +1146,9 @@ DesktopPluginComponent {
                 width: Math.round(win.width * (root.effTickerWPct / 100))
                 x: Math.round((win.width - width) * (root.effTickerHPct / 100))
                 height: root.tickerBarHeight
-                // "below": full-screen window; the strip moves vertically from just
-                // under the main bar (0%) to the screen bottom (100%), never past
-                // the system bar. "bottom": short window, strip fills it.
+                // full-screen window; the strip moves vertically from just under the
+                // main bar (0%) to the screen bottom (100%), never past the system bar.
                 y: {
-                    if (!win.below)
-                        return 0;
                     var avail = Math.max(0, win.height - root.mainBarReserved - root.tickerBarHeight);
                     var base = root.mainBarReserved + avail * (root.effTickerVPct / 100);
                     if (win.docked)
@@ -1195,7 +1180,7 @@ DesktopPluginComponent {
                 readonly property int resizeZone: 22
 
                 onPressed: mouse => {
-                    if (mouse.button === Qt.RightButton && win.below) {
+                    if (mouse.button === Qt.RightButton) {
                         root.tickerEditing = true;
                         root.tickerHovered = true;
                         keyCatcher.forceActiveFocus();
@@ -1407,7 +1392,7 @@ DesktopPluginComponent {
             // [patch:tickerbar] shortcuts hint, shown bottom-center while editing
             // (right-click held), like the desktop card edit hint.
             Rectangle {
-                visible: root.tickerEditing && win.below
+                visible: root.tickerEditing
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: 48
@@ -1447,7 +1432,7 @@ DesktopPluginComponent {
     // reserves barHeight so windows tile BELOW the ticker — its exclusive zone
     // sums with the main bar's. The visible bar stays the deterministic overlay.
     Variants {
-        model: (root.tickerBarEnabled && root.isInstance && root._instanceEnabled && root.tickerPlacement === "below" && (root.tickerVerticalPct < 1 || root.tickerVerticalPct > 99)) ? Quickshell.screens : []
+        model: (root.tickerBarEnabled && root.isInstance && root._instanceEnabled && (root.tickerVerticalPct < 1 || root.tickerVerticalPct > 99)) ? Quickshell.screens : []
 
         PanelWindow {
             required property var modelData
