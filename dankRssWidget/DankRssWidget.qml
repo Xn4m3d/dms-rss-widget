@@ -52,20 +52,30 @@ DesktopPluginComponent {
     readonly property real _mbThk: Math.max(_mbWidgetThk + _mbInnerPad + 4, Theme.barHeight - 4 - (8 - _mbInnerPad))
     // main bar edge: 0=top 1=bottom 2=left 3=right (number in barConfigs). Hidden / no
     // config → no reservation (the overlay just uses the full screen).
-    readonly property int _mbPosition: _mainBar ? (_mainBar.position ?? 0) : -1
+    readonly property int mbPosition: _mainBar ? (_mainBar.position ?? 0) : -1
     readonly property bool _mbVisible: _mainBar ? (_mainBar.visible ?? true) : false
-    readonly property bool _mbVertical: _mbVisible && (_mbPosition === 2 || _mbPosition === 3)
-    readonly property bool _mbAtBottom: _mbVisible && _mbPosition === 1
+    readonly property bool _mbVertical: _mbVisible && (mbPosition === 2 || mbPosition === 3)
+    readonly property bool _mbAtBottom: _mbVisible && mbPosition === 1
     readonly property real _mbReserve: _mbVisible ? (_mbThk + (_mainBar.spacing ?? 4) + (_mainBar.bottomGap ?? 0)) : 0
     // only the bar's own edge is reserved; the ticker docks against it (or the screen edge)
-    readonly property real mainBarReservedTop:    (_mbVisible && _mbPosition === 0) ? _mbReserve : 0
+    readonly property real mainBarReservedTop:    (_mbVisible && mbPosition === 0) ? _mbReserve : 0
     readonly property real mainBarReservedBottom: _mbAtBottom ? _mbReserve : 0
-    readonly property real mainBarReservedLeft:   (_mbVisible && _mbPosition === 2) ? _mbReserve : 0
-    readonly property real mainBarReservedRight:  (_mbVisible && _mbPosition === 3) ? _mbReserve : 0
+    readonly property real mainBarReservedLeft:   (_mbVisible && mbPosition === 2) ? _mbReserve : 0
+    readonly property real mainBarReservedRight:  (_mbVisible && mbPosition === 3) ? _mbReserve : 0
     // which SCREEN edge the docked bar sits at (vPct 0 follows the main bar, so it flips
     // when the bar is at the bottom). Drives the foreground layer + the reservation spacer.
-    readonly property bool _tickerDockedScreenTop: (tickerVerticalPct < 1 && !_mbAtBottom) || (tickerVerticalPct > 99 && _mbAtBottom)
-    readonly property bool _tickerDockedScreenBottom: (tickerVerticalPct > 99 && !_mbAtBottom) || (tickerVerticalPct < 1 && _mbAtBottom)
+    readonly property bool tickerDockedScreenTop: (tickerVerticalPct < 1 && !_mbAtBottom) || (tickerVerticalPct > 99 && _mbAtBottom)
+    readonly property bool tickerDockedScreenBottom: (tickerVerticalPct > 99 && !_mbAtBottom) || (tickerVerticalPct < 1 && _mbAtBottom)
+    // When the main bar moves (or the docked edge flips) we DROP the reservation spacer
+    // for a moment, then rebuild it once the main bar has re-settled at its new edge. Two
+    // exclusive-zone surfaces racing for the same screen edge is what shoved the main bar
+    // inward; recreating the spacer LAST (after the bar settles) makes it reserve ABOVE the
+    // bar — the same reason the vertical-bar case (spacer dropped) and cold start both work.
+    property bool _spacerSettling: false
+    function _resettleSpacer() { root._spacerSettling = true; spacerSettleTimer.restart(); }
+    onMbPositionChanged: root._resettleSpacer()
+    onTickerDockedScreenTopChanged: root._resettleSpacer()
+    Timer { id: spacerSettleTimer; interval: 600; onTriggered: root._spacerSettling = false }
     property int tickerBarHeight: pluginData.tickerBarHeight ?? 24
     property real tickerBgOpacity: (pluginData.tickerBgOpacity ?? 60) / 100
     property int tickerTitleFontSize: pluginData.tickerTitleFontSize ?? 13
@@ -1093,8 +1103,8 @@ DesktopPluginComponent {
             // docked = stuck right under the main bar (vertical position ~0) or at the
             // screen bottom (~100). Based on the STORED value so the layer settles on
             // release (not during a live drag, which can't re-commit a surface mid-grab).
-            readonly property bool dockedTop: root._tickerDockedScreenTop
-            readonly property bool dockedBottom: root._tickerDockedScreenBottom
+            readonly property bool dockedTop: root.tickerDockedScreenTop
+            readonly property bool dockedBottom: root.tickerDockedScreenBottom
             readonly property bool docked: dockedTop || dockedBottom
             onDockedChanged: win._recommit()
 
@@ -1142,10 +1152,12 @@ DesktopPluginComponent {
                 interval: 40
                 onTriggered: win.visible = true
             }
+            // re-commit when the docked SCREEN edge flips (main bar moved, or the bar
+            // re-commit when the main bar moves — the full-screen overlay can otherwise get
+            // stuck on a live position switch (e.g. the strip vanishing after right→top).
             Connections {
                 target: root
-                function onTickerForegroundChanged() { win._recommit(); }
-                function onTickerPlacementChanged() { win._recommit(); }
+                function onMbPositionChanged() { win._recommit(); }
             }
 
             HyprlandFocusGrab {
@@ -1469,7 +1481,7 @@ DesktopPluginComponent {
         // no reservation when the main bar is vertical (left/right): a full-width top/
         // bottom spacer would push the vertical bar down and leave a corner gap. The
         // ticker just overlays (foreground) there, letting the vertical bar fill 100%.
-        model: (root.tickerBarEnabled && root.isInstance && root._instanceEnabled && !root._mbVertical && (root._tickerDockedScreenTop || root._tickerDockedScreenBottom)) ? Quickshell.screens : []
+        model: (root.tickerBarEnabled && root.isInstance && root._instanceEnabled && !root._mbVertical && !root._spacerSettling && (root.tickerDockedScreenTop || root.tickerDockedScreenBottom)) ? Quickshell.screens : []
 
         PanelWindow {
             required property var modelData
@@ -1480,8 +1492,8 @@ DesktopPluginComponent {
             color: "transparent"
             // anchor to whichever SCREEN edge the bar is docked against → reserves that strip.
             anchors {
-                top: root._tickerDockedScreenTop
-                bottom: root._tickerDockedScreenBottom
+                top: root.tickerDockedScreenTop
+                bottom: root.tickerDockedScreenBottom
                 left: true
                 right: true
             }
