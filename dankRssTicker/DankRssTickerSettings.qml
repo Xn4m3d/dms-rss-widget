@@ -8,6 +8,16 @@ PluginSettings {
     id: root
     pluginId: "dankRssTicker"
 
+    // a horizontal scrolling pill can't work in a VERTICAL (left/right) main bar →
+    // the enable toggle is disabled there (position: 2=left, 3=right).
+    readonly property bool barVertical: {
+        var bars = SettingsData.barConfigs || [];
+        if (bars.length === 0)
+            return false;
+        var p = bars[0].position;
+        return p === 2 || p === 3;
+    }
+
     // mutual exclusion: only one ticker active at a time. Enabling this bar pill
     // turns OFF the desktop overlay ticker (dankRssWidget.tickerBarEnabled).
     function disableDesktopOverlay() {
@@ -51,6 +61,8 @@ PluginSettings {
 
     ToggleSetting {
         id: pillToggle
+        enabled: !root.barVertical
+        opacity: root.barVertical ? 0.4 : 1.0
         settingKey: "pillEnabled"
         label: "Enable this ticker"
         description: "Scroll headlines in the bar. Turning this ON switches OFF the desktop ticker bar — only one ticker can be active at a time. (You still need to add this widget to a bar via Settings → Bar.)"
@@ -64,6 +76,15 @@ PluginSettings {
             if (pillToggle.value)
                 root.disableDesktopOverlay()
         }
+    }
+
+    StyledText {
+        visible: root.barVertical
+        width: parent.width
+        text: "⚠️ Your main bar is vertical (left/right) — a horizontal scrolling pill can't run there. Use the desktop ticker bar instead (Settings → Desktop Widgets)."
+        font.pixelSize: Theme.fontSizeSmall
+        color: Theme.error
+        wrapMode: Text.WordWrap
     }
 
     // hide the on-desktop RSS card (controls the dankRssWidget instance directly)

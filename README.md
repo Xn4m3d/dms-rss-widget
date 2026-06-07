@@ -32,15 +32,33 @@ automatically disables the other.
 
 ### Ticker bar — overlay (new in v2)
 - Full-width scrolling headlines; reuses the card's in-memory items (no extra fetching)
-- **Docks** under the main bar or at the screen bottom (reserves space, foreground), or **floats**
-  anywhere in between (sits behind your windows)
-- **Magnet** snap to the top/bottom edges while dragging
-- Hold **right-click + drag** to move it, press **S** to toggle 100% / 50% width, with an on-screen hint
-- Tunable width, horizontal position, corner radius, border, fonts, scroll speed, item spacing
+- **Adapts to the main bar's position** (see below): docks under a **top** bar, **follows** a
+  **bottom** bar (docks just above it), or — for a **vertical** (left/right) bar — sits at the top
+  with its width reduced to the space beside the bar
+- **Docks** to a screen edge (reserves space, foreground) or **floats** in between (behind windows),
+  with a **magnet** snap to the edges while dragging
+- Right-click-and-drag to move it; drag the **right edge** to resize the width (snaps back to full);
+  **scroll** while holding right-click to tune the background opacity; press **S** to toggle 100%/50%
+- Tunable width, horizontal position, vertical offset (when docked), height, corner radius, border,
+  fonts, scroll speed, item spacing; option to show/hide while the compositor overview is open
 - Latest-N items or per-source round-robin; click a headline to open it; pause on hover
 
+#### Main bar position
+
+The ticker stays consistent with where you put your DankBar:
+
+| Main bar | Ticker bar |
+|----------|------------|
+| **Top** | docks just under it (reserves space) |
+| **Bottom** | follows it — docks just **above** it (reserves space) |
+| **Left / Right** (vertical) | sits at the top of the screen, width reduced to the area **beside** the bar; it does **not** reserve height there (so the vertical bar keeps full height), and the **pill mode is disabled** |
+
+> **Multi-bar setups:** the ticker positions itself relative to the **first** bar config only; extra
+> bars (a second bar on another edge or monitor) aren't accounted for yet. Open an issue if you need it.
+
 ### Bar pill — companion (new in v2)
-- The same scrolling headlines as a compact widget **inside** the DankBar
+- The same scrolling headlines as a compact widget **inside** the DankBar (horizontal bars only — it's
+  automatically disabled when the main bar is vertical)
 - Mutually exclusive with the desktop overlay, with shortcut buttons to jump between the two settings pages
 
 ### Hardening & fixes (also offered upstream)

@@ -50,8 +50,22 @@ DesktopPluginComponent {
     readonly property int _mbInnerPad: _mainBar ? (_mainBar.innerPadding ?? 4) : 4
     readonly property real _mbWidgetThk: Math.max(20, 26 + _mbInnerPad * 0.6)
     readonly property real _mbThk: Math.max(_mbWidgetThk + _mbInnerPad + 4, Theme.barHeight - 4 - (8 - _mbInnerPad))
-    readonly property bool _mbTopVisible: _mainBar ? ((_mainBar.position ?? 0) === 0 && (_mainBar.visible ?? true)) : true
-    readonly property real mainBarReserved: _mbTopVisible ? (_mbThk + (_mainBar ? (_mainBar.spacing ?? 4) : 4) + (_mainBar ? (_mainBar.bottomGap ?? 0) : 0)) : 0
+    // main bar edge: 0=top 1=bottom 2=left 3=right (number in barConfigs). Hidden / no
+    // config → no reservation (the overlay just uses the full screen).
+    readonly property int _mbPosition: _mainBar ? (_mainBar.position ?? 0) : -1
+    readonly property bool _mbVisible: _mainBar ? (_mainBar.visible ?? true) : false
+    readonly property bool _mbVertical: _mbVisible && (_mbPosition === 2 || _mbPosition === 3)
+    readonly property bool _mbAtBottom: _mbVisible && _mbPosition === 1
+    readonly property real _mbReserve: _mbVisible ? (_mbThk + (_mainBar.spacing ?? 4) + (_mainBar.bottomGap ?? 0)) : 0
+    // only the bar's own edge is reserved; the ticker docks against it (or the screen edge)
+    readonly property real mainBarReservedTop:    (_mbVisible && _mbPosition === 0) ? _mbReserve : 0
+    readonly property real mainBarReservedBottom: _mbAtBottom ? _mbReserve : 0
+    readonly property real mainBarReservedLeft:   (_mbVisible && _mbPosition === 2) ? _mbReserve : 0
+    readonly property real mainBarReservedRight:  (_mbVisible && _mbPosition === 3) ? _mbReserve : 0
+    // which SCREEN edge the docked bar sits at (vPct 0 follows the main bar, so it flips
+    // when the bar is at the bottom). Drives the foreground layer + the reservation spacer.
+    readonly property bool _tickerDockedScreenTop: (tickerVerticalPct < 1 && !_mbAtBottom) || (tickerVerticalPct > 99 && _mbAtBottom)
+    readonly property bool _tickerDockedScreenBottom: (tickerVerticalPct > 99 && !_mbAtBottom) || (tickerVerticalPct < 1 && _mbAtBottom)
     property int tickerBarHeight: pluginData.tickerBarHeight ?? 24
     property real tickerBgOpacity: (pluginData.tickerBgOpacity ?? 60) / 100
     property int tickerTitleFontSize: pluginData.tickerTitleFontSize ?? 13
@@ -1079,8 +1093,8 @@ DesktopPluginComponent {
             // docked = stuck right under the main bar (vertical position ~0) or at the
             // screen bottom (~100). Based on the STORED value so the layer settles on
             // release (not during a live drag, which can't re-commit a surface mid-grab).
-            readonly property bool dockedTop: root.tickerVerticalPct < 1
-            readonly property bool dockedBottom: root.tickerVerticalPct > 99
+            readonly property bool dockedTop: root._tickerDockedScreenTop
+            readonly property bool dockedBottom: root._tickerDockedScreenBottom
             readonly property bool docked: dockedTop || dockedBottom
             onDockedChanged: win._recommit()
 
@@ -1143,14 +1157,23 @@ DesktopPluginComponent {
                 id: tickerStrip
                 // hide while the compositor overview is open, unless allowed
                 visible: !(NiriService.inOverview && !root.tickerShowInOverview)
-                width: Math.round(win.width * (root.effTickerWPct / 100))
-                x: Math.round((win.width - width) * (root.effTickerHPct / 100))
+                // horizontal band: leave room for a left/right main bar (full width otherwise)
+                readonly property real _bandLeft: root.mainBarReservedLeft
+                readonly property real _bandWidth: Math.max(80, win.width - root.mainBarReservedLeft - root.mainBarReservedRight)
+                width: Math.round(_bandWidth * (root.effTickerWPct / 100))
+                x: Math.round(_bandLeft + (_bandWidth - width) * (root.effTickerHPct / 100))
                 height: root.tickerBarHeight
-                // full-screen window; the strip moves vertically from just under the
-                // main bar (0%) to the screen bottom (100%), never past the system bar.
+                // vertical band between the top/bottom reservations. vPct 0 = docked against
+                // the main bar (or the screen top if the bar is on a side); 100 = far edge.
+                // When the main bar is at the bottom the direction flips so the ticker
+                // "follows" it (docks just above it).
                 y: {
-                    var avail = Math.max(0, win.height - root.mainBarReserved - root.tickerBarHeight);
-                    var base = root.mainBarReserved + avail * (root.effTickerVPct / 100);
+                    var bandTop = root.mainBarReservedTop;
+                    var bandBottom = win.height - root.mainBarReservedBottom;
+                    var avail = Math.max(0, bandBottom - bandTop - root.tickerBarHeight);
+                    var base = root._mbAtBottom
+                        ? (bandBottom - root.tickerBarHeight) - avail * (root.effTickerVPct / 100)
+                        : bandTop + avail * (root.effTickerVPct / 100);
                     if (win.docked)
                         base += root.tickerDockOffset;
                     return Math.round(Math.max(0, Math.min(win.height - root.tickerBarHeight, base)));
@@ -1207,31 +1230,42 @@ DesktopPluginComponent {
                     var g = editArea.mapToItem(null, mouse.x, mouse.y);
                     root._tickerMarkAdjusting();
                     if (root.tickerResizing) {
-                        // width only: keep the left edge fixed (adjust hPct); magnet → full width
-                        var minW = Math.max(120, win.width * 0.10);
-                        var newW = Math.max(minW, Math.min(win.width, g.x - editArea.grabLeft));
-                        var wpct = newW / win.width * 100;
+                        // width only within the horizontal band; left edge fixed (adjust hPct),
+                        // magnet → full band width.
+                        var bandLeft = root.mainBarReservedLeft;
+                        var bandW = Math.max(80, win.width - root.mainBarReservedLeft - root.mainBarReservedRight);
+                        var bandRight = bandLeft + bandW;
+                        var minW = Math.max(120, bandW * 0.10);
+                        var newW = Math.max(minW, Math.min(bandW, Math.min(bandRight, g.x) - editArea.grabLeft));
+                        var wpct = newW / bandW * 100;
                         if (wpct >= 95) {
                             root._tickerWLive = 100;
                             root._tickerHLive = 0;
                         } else {
                             root._tickerWLive = wpct;
-                            var denomW = Math.max(1, win.width - newW);
-                            root._tickerHLive = Math.max(0, Math.min(100, editArea.grabLeft / denomW * 100));
+                            var denomW = Math.max(1, bandW - newW);
+                            root._tickerHLive = Math.max(0, Math.min(100, (editArea.grabLeft - bandLeft) / denomW * 100));
                         }
                         return;
                     }
-                    var availY = Math.max(1, win.height - root.mainBarReserved - root.tickerBarHeight);
-                    var vraw = Math.max(0, Math.min(100, ((g.y - editArea.grabDY) - root.mainBarReserved) / availY * 100));
-                    var snap = 3;   // tight magnet: snaps to the main bar (0) / screen bottom (100) only when close
+                    var bandTop = root.mainBarReservedTop;
+                    var bandBottom = win.height - root.mainBarReservedBottom;
+                    var availY = Math.max(1, bandBottom - bandTop - root.tickerBarHeight);
+                    var yTop = (g.y - editArea.grabDY);   // the strip's new top edge
+                    var vraw = root._mbAtBottom
+                        ? Math.max(0, Math.min(100, ((bandBottom - root.tickerBarHeight) - yTop) / availY * 100))
+                        : Math.max(0, Math.min(100, (yTop - bandTop) / availY * 100));
+                    var snap = 3;   // tight magnet: snaps to the main bar (0) / far edge (100) only when close
                     if (vraw < snap)
                         vraw = 0;
                     else if (vraw > 100 - snap)
                         vraw = 100;
                     root._tickerVLive = vraw;
                     if (root.effTickerWPct < 100) {
-                        var availX = Math.max(1, win.width - tickerStrip.width);
-                        root._tickerHLive = Math.max(0, Math.min(100, (g.x - editArea.grabDX) / availX * 100));
+                        var bandLeft = root.mainBarReservedLeft;
+                        var bandW = Math.max(80, win.width - root.mainBarReservedLeft - root.mainBarReservedRight);
+                        var availX = Math.max(1, bandW - tickerStrip.width);
+                        root._tickerHLive = Math.max(0, Math.min(100, ((g.x - editArea.grabDX) - bandLeft) / availX * 100));
                     }
                 }
 
@@ -1432,7 +1466,10 @@ DesktopPluginComponent {
     // reserves barHeight so windows tile BELOW the ticker — its exclusive zone
     // sums with the main bar's. The visible bar stays the deterministic overlay.
     Variants {
-        model: (root.tickerBarEnabled && root.isInstance && root._instanceEnabled && (root.tickerVerticalPct < 1 || root.tickerVerticalPct > 99)) ? Quickshell.screens : []
+        // no reservation when the main bar is vertical (left/right): a full-width top/
+        // bottom spacer would push the vertical bar down and leave a corner gap. The
+        // ticker just overlays (foreground) there, letting the vertical bar fill 100%.
+        model: (root.tickerBarEnabled && root.isInstance && root._instanceEnabled && !root._mbVertical && (root._tickerDockedScreenTop || root._tickerDockedScreenBottom)) ? Quickshell.screens : []
 
         PanelWindow {
             required property var modelData
@@ -1441,11 +1478,10 @@ DesktopPluginComponent {
             WlrLayershell.layer: WlrLayer.Top
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
             color: "transparent"
-            // anchor to whichever edge the bar is docked against (top under the
-            // main bar, or the screen bottom) → reserves that strip.
+            // anchor to whichever SCREEN edge the bar is docked against → reserves that strip.
             anchors {
-                top: root.tickerVerticalPct < 1
-                bottom: root.tickerVerticalPct > 99
+                top: root._tickerDockedScreenTop
+                bottom: root._tickerDockedScreenBottom
                 left: true
                 right: true
             }

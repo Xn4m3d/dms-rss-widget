@@ -24,15 +24,24 @@ PluginComponent {
     // master on/off: when off, the pill collapses to nothing in the bar. Only one
     // ticker should be active at a time (this bar pill OR the desktop overlay).
     readonly property bool pillEnabled: pluginData.pillEnabled !== undefined ? pluginData.pillEnabled : false
+    // a horizontal scrolling pill makes no sense in a VERTICAL (left/right) main bar —
+    // force it off there (the settings toggle is disabled too). position: 2=left 3=right.
+    readonly property bool barVertical: {
+        var bars = SettingsData.barConfigs || [];
+        if (bars.length === 0) return false;
+        var p = bars[0].position;
+        return p === 2 || p === 3;
+    }
+    readonly property bool pillActive: pillEnabled && !barVertical
     // on root so it resolves inside the Repeater delegates (nested ids like `clip`
     // don't resolve there — only `root` does).
     readonly property real tickerGap: Theme.spacingL * 2
 
-    // When disabled, collapse the WHOLE pill (BasePill width 0 + opacity 0) via the
+    // When inactive, collapse the WHOLE pill (BasePill width 0 + opacity 0) via the
     // PluginComponent visibility mechanism — just zeroing the content width left the
     // pill's background/padding chrome visible in the bar.
-    onPillEnabledChanged: root.setVisibilityOverride(root.pillEnabled)
-    Component.onCompleted: root.setVisibilityOverride(root.pillEnabled)
+    onPillActiveChanged: root.setVisibilityOverride(root.pillActive)
+    Component.onCompleted: root.setVisibilityOverride(root.pillActive)
 
     // --- data ---
     property var items: []
@@ -88,8 +97,8 @@ PluginComponent {
         Item {
             id: clip
             clip: true
-            visible: root.pillEnabled
-            implicitWidth: root.pillEnabled ? root.tickerWidth : 0
+            visible: root.pillActive
+            implicitWidth: root.pillActive ? root.tickerWidth : 0
             implicitHeight: root.widgetThickness
 
             readonly property bool paused: root.pauseOnHover && hoverArea.containsMouse
