@@ -1066,12 +1066,21 @@ PluginSettings {
     }
 
     ToggleSetting {
+        id: hideCardSetting
         opacity: tickerToggle.value ? 1.0 : 0.2
         enabled: tickerToggle.value
         settingKey: "hideDesktopView"
         label: "Hide the desktop card"
         description: "Keep only the scrolling bar (hides the on-desktop widget, the bar stays). Tip: also enable ‘Click-through’ so the empty area doesn’t catch clicks."
         defaultValue: false
+    }
+    // Stay in sync with the pill companion's identical "Hide the desktop card" toggle:
+    // both write hideDesktopView on this instance via the same mechanism, but a plain
+    // ToggleSetting only reads its value once — re-load it whenever the instance config
+    // changes elsewhere (e.g. the pill flips it). loadValue() no-ops if already in sync.
+    Connections {
+        target: SettingsData
+        function onDesktopWidgetInstancesChanged() { hideCardSetting.loadValue() }
     }
 
     StyledText {
