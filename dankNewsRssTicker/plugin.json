@@ -1,6 +1,6 @@
 {
-  "id": "dankRssWidget",
-  "name": "Dank RSS Widget+",
+  "id": "dankNewsRssTicker",
+  "name": "Dank News RSS & Ticker",
   "description": "RSS/Atom feeds on your desktop, plus a full-width scrolling ticker bar (docks under the main bar or to the screen bottom, or floats) and an optional in-bar pill companion. v2 fork of BrendonJL/dms-rss-widget with the ticker extension.",
   "version": "2.0.0",
   "author": "Xn4m3d",

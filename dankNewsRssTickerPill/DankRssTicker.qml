@@ -6,15 +6,15 @@ import qs.Services
 import qs.Widgets
 import qs.Modules.Plugins
 
-// Bar-widget companion to dankRssWidget: a scrolling marquee of the latest
+// Bar-widget companion to dankNewsRssTicker: a scrolling marquee of the latest
 // headlines, read straight from the cache the desktop widget already writes
-// (~/.cache/dankRssWidget-items.json). Read-only: it never fetches feeds itself.
+// (~/.cache/dankNewsRssTicker-items.json). Read-only: it never fetches feeds itself.
 PluginComponent {
     id: root
 
     layerNamespacePlugin: "rss-ticker"
 
-    // --- config (plugin_settings.json -> "dankRssTicker") ---
+    // --- config (plugin_settings.json -> "dankNewsRssTickerPill") ---
     readonly property int maxItems: pluginData.maxItems || 15
     readonly property int scrollSpeed: pluginData.scrollSpeed || 40        // px/s
     readonly property int tickerWidth: pluginData.tickerWidth || 380       // visible width in the bar
@@ -45,7 +45,7 @@ PluginComponent {
 
     // --- data ---
     property var items: []
-    readonly property string cachePath: Paths.strip(Paths.home) + "/.cache/dankRssWidget-items.json"
+    readonly property string cachePath: Paths.strip(Paths.home) + "/.cache/dankNewsRssTicker-items.json"
 
     function isSafeUrl(u) {
         return typeof u === "string" && /^https?:\/\//i.test(u)

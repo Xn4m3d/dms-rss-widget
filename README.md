@@ -1,4 +1,4 @@
-# Dank RSS Widget+ (v2)
+# Dank News RSS & Ticker (v2)
 
 RSS and Atom feeds for [DankMaterialShell](https://github.com/AvengeMedia/DankMaterialShell), three ways:
 a desktop **card**, a full-width scrolling **ticker bar**, and an optional in-bar **pill**.
@@ -14,8 +14,8 @@ Two DMS plugins:
 
 | Folder | Plugin | What it is |
 |--------|--------|------------|
-| `dankRssWidget/` | **Dank RSS Widget+** (`desktop`) | The desktop card **and** the full-width scrolling ticker bar (overlay) |
-| `dankRssTicker/` | **Dank RSS Widget+ (Pill companion)** (`widget`) | A small scrolling pill **inside** the DankBar, reading the same feeds |
+| `dankNewsRssTicker/` | **Dank News RSS & Ticker** (`desktop`) | The desktop card **and** the full-width scrolling ticker bar (overlay) |
+| `dankNewsRssTickerPill/` | **Dank News RSS & Ticker Pill** (`widget`) | A small scrolling pill **inside** the DankBar, reading the same feeds |
 
 Only **one** ticker can be active at a time (the desktop overlay **or** the bar pill) — enabling one
 automatically disables the other.
@@ -78,10 +78,10 @@ git clone https://github.com/Xn4m3d/dms-rss-widget.git
 cd dms-rss-widget
 
 # the desktop card + ticker bar (required):
-ln -s "$PWD/dankRssWidget" ~/.config/DankMaterialShell/plugins/dankRssWidget
+ln -s "$PWD/dankNewsRssTicker" ~/.config/DankMaterialShell/plugins/dankNewsRssTicker
 
 # optional — the in-bar pill companion:
-ln -s "$PWD/dankRssTicker" ~/.config/DankMaterialShell/plugins/dankRssTicker
+ln -s "$PWD/dankNewsRssTickerPill" ~/.config/DankMaterialShell/plugins/dankNewsRssTickerPill
 ```
 
 Reload DMS (Ctrl+Shift+R) or restart your compositor. To use the pill, add it to a bar via
@@ -89,13 +89,13 @@ Reload DMS (Ctrl+Shift+R) or restart your compositor. To use the pill, add it to
 
 ## Configuration
 
-Open **Settings → Desktop Widgets → Dank RSS Widget+** and use the tabs:
+Open **Settings → Desktop Widgets → Dank News RSS & Ticker** and use the tabs:
 
 1. **General** — add feeds (or quick-add presets / OPML), refresh interval, max items, sort order, notifications
 2. **Card** — name label, view mode, font size, background opacity, borders
 3. **Ticker bar** — enable the overlay, width/position, height, opacity, corners, border, fonts, item mode
 
-The pill has its own settings in **Settings → Plugins → Dank RSS Widget+ (Pill companion)**.
+The pill has its own settings in **Settings → Plugins → Dank News RSS & Ticker Pill**.
 
 ## Requirements
 
@@ -105,10 +105,10 @@ The pill has its own settings in **Settings → Plugins → Dank RSS Widget+ (Pi
 ## Testing
 
 The core feed-parsing logic is mirrored in a standalone JS module
-(`dankRssWidget/feed-parser-tests/feed-parser.js`) so it can be unit-tested with Node.js without the QML runtime.
+(`dankNewsRssTicker/feed-parser-tests/feed-parser.js`) so it can be unit-tested with Node.js without the QML runtime.
 
 ```bash
-node --test dankRssWidget/feed-parser-tests/feed-parser.test.js
+node --test dankNewsRssTicker/feed-parser-tests/feed-parser.test.js
 ```
 
 Requires Node.js 18+ (uses the built-in `node:test` runner). 60 tests across 9 suites cover tag

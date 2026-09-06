@@ -6,7 +6,7 @@ import qs.Modules.Plugins
 
 PluginSettings {
     id: root
-    pluginId: "dankRssTicker"
+    pluginId: "dankNewsRssTickerPill"
 
     // a horizontal scrolling pill can't work in a VERTICAL (left/right) main bar →
     // the enable toggle is disabled there (position: 2=left, 3=right).
@@ -19,33 +19,33 @@ PluginSettings {
     }
 
     // mutual exclusion: only one ticker active at a time. Enabling this bar pill
-    // turns OFF the desktop overlay ticker (dankRssWidget.tickerBarEnabled).
+    // turns OFF the desktop overlay ticker (dankNewsRssTicker.tickerBarEnabled).
     function disableDesktopOverlay() {
         var insts = SettingsData.desktopWidgetInstances || []
         for (var i = 0; i < insts.length; i++) {
-            if (insts[i].widgetType === "dankRssWidget")
+            if (insts[i].widgetType === "dankNewsRssTicker")
                 SettingsData.updateDesktopWidgetInstanceConfig(insts[i].id, {"tickerBarEnabled": false})
         }
     }
 
-    // read/write the desktop card's hidden state (lives in the dankRssWidget instance)
+    // read/write the desktop card's hidden state (lives in the dankNewsRssTicker instance)
     function desktopCardHidden() {
         var insts = SettingsData.desktopWidgetInstances || []
         for (var i = 0; i < insts.length; i++)
-            if (insts[i].widgetType === "dankRssWidget")
+            if (insts[i].widgetType === "dankNewsRssTicker")
                 return !!(insts[i].config && insts[i].config.hideDesktopView)
         return false
     }
     function setDesktopCardHidden(hide) {
         var insts = SettingsData.desktopWidgetInstances || []
         for (var i = 0; i < insts.length; i++)
-            if (insts[i].widgetType === "dankRssWidget")
+            if (insts[i].widgetType === "dankNewsRssTicker")
                 SettingsData.updateDesktopWidgetInstanceConfig(insts[i].id, {"hideDesktopView": hide})
     }
 
     StyledText {
         width: parent.width
-        text: "Dank RSS Widget+ (Pill companion)"
+        text: "Dank News RSS & Ticker Pill"
         font.pixelSize: Theme.fontSizeLarge
         font.weight: Font.Bold
         color: Theme.surfaceText
@@ -87,7 +87,7 @@ PluginSettings {
         wrapMode: Text.WordWrap
     }
 
-    // hide the on-desktop RSS card (controls the dankRssWidget instance directly)
+    // hide the on-desktop RSS card (controls the dankNewsRssTicker instance directly)
     Row {
         width: parent.width
         spacing: Theme.spacingM

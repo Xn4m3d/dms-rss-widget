@@ -203,7 +203,7 @@ DesktopPluginComponent {
 
     // [patch:cache] persist fetched items so a recreated widget shows them instantly
     // (no blank) then refreshes in the background.
-    property string _cacheFile: "~/.cache/dankRssWidget-items.json"
+    property string _cacheFile: "~/.cache/dankNewsRssTicker-items.json"
     function isSafeUrl(u) { return typeof u === "string" && /^https?:\/\//i.test(u); }   // [patch:secure] scheme allowlist for open/Image/cache
 
     // [patch:overview] In Niri's "overview" (all-workspaces preview), selecting a workspace

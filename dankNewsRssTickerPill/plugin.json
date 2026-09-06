@@ -1,7 +1,7 @@
 {
-  "id": "dankRssTicker",
-  "name": "Dank RSS Widget+ (Pill companion)",
-  "description": "Companion for the Dank RSS Widget+ allowing you to switch the ticker bar as a pill in your widget area.",
+  "id": "dankNewsRssTickerPill",
+  "name": "Dank News RSS & Ticker Pill",
+  "description": "Companion for the Dank News RSS & Ticker allowing you to switch the ticker bar as a pill in your widget area.",
   "version": "1.0.0",
   "author": "Xn4m3d",
   "type": "widget",

@@ -8,7 +8,7 @@ import qs.Modules.Plugins
 
 PluginSettings {
     id: root
-    pluginId: "dankRssWidget"
+    pluginId: "dankNewsRssTicker"
 
     property int editingIndex: -1
     property int activeTab: 0   // 0 = General, 1 = Card, 2 = Ticker bar
@@ -16,7 +16,7 @@ PluginSettings {
     // --- Header ---
     StyledText {
         width: parent.width
-        text: "Dank RSS Widget+"
+        text: "Dank News RSS & Ticker"
         font.pixelSize: Theme.fontSizeLarge
         font.weight: Font.Bold
         color: Theme.surfaceText
@@ -1061,7 +1061,7 @@ PluginSettings {
             if (!tickerToggle.isInitialized)
                 return
             if (tickerToggle.value)
-                PluginService.savePluginData("dankRssTicker", "pillEnabled", false)
+                PluginService.savePluginData("dankNewsRssTickerPill", "pillEnabled", false)
         }
     }
 
