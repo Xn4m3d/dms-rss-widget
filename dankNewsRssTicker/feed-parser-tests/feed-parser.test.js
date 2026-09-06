@@ -417,3 +417,56 @@ describe("parseOpml", () => {
         assert.deepEqual(parseOpml(xml), []);
     });
 });
+
+// ─── parseFeed: RSS vs Atom routing ───
+
+describe("parseFeed routing", () => {
+    // Regression: CNBC's RSS 2.0 carries a <feed_asset> element, so a naive
+    // indexOf("<feed") sent the whole document to the Atom parser and it silently
+    // yielded nothing.
+    test("routes RSS containing a <feed_asset> element to the RSS parser", () => {
+        const xml = `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel>
+            <title>Finance</title>
+            <feed_asset><id>10000664</id><type>franchise</type></feed_asset>
+            <item><link>https://example.com/a</link><title>Story A</title></item>
+            <item><link>https://example.com/b</link><title>Story B</title></item>
+        </channel></rss>`;
+        const items = parseFeed(xml, "CNBC");
+        assert.equal(items.length, 2);
+        assert.equal(items[0].title, "Story A");
+        assert.equal(items[0].source, "CNBC");
+    });
+
+    test("routes RSS containing a feedburner namespace to the RSS parser", () => {
+        const xml = `<?xml version="1.0"?><rss version="2.0" xmlns:feedburner="http://rssnamespace.org/feedburner/ext/1.0"><channel>
+            <item><title>Only one</title><link>https://example.com/x</link>
+            <feedburner:origLink>https://example.com/x</feedburner:origLink></item>
+        </channel></rss>`;
+        const items = parseFeed(xml, "FB");
+        assert.equal(items.length, 1);
+        assert.equal(items[0].title, "Only one");
+    });
+
+    test("still routes a real Atom document to the Atom parser", () => {
+        const xml = `<?xml version="1.0" encoding="utf-8"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+            <title>Blog</title>
+            <entry><title>Post</title><link rel="alternate" href="https://example.com/p"/><updated>2026-01-01T00:00:00Z</updated></entry>
+        </feed>`;
+        const items = parseFeed(xml, "Atom");
+        assert.equal(items.length, 1);
+        assert.equal(items[0].title, "Post");
+        assert.equal(items[0].link, "https://example.com/p");
+    });
+
+    test("prefers the root element when a document carries both containers", () => {
+        const xml = `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom">
+            <entry><title>Atom wins</title><link rel="alternate" href="https://example.com/a"/></entry>
+            <content>an escaped &lt;item&gt; mention</content>
+            <item><title>Should be ignored</title></item>
+        </feed>`;
+        const items = parseFeed(xml, "Both");
+        assert.equal(items.length, 1);
+        assert.equal(items[0].title, "Atom wins");
+    });
+});

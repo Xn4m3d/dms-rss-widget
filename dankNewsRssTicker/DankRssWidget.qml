@@ -489,12 +489,23 @@ DesktopPluginComponent {
     }
 
     // --- XML Parsing ---
+    // [patch:atom-detect] This used to route on `xml.indexOf("<feed") !== -1`, i.e. the
+    // substring "<feed" ANYWHERE in the document. Plenty of RSS 2.0 feeds carry an element
+    // whose name merely starts with "feed" — CNBC ships <feed_asset>, FeedBurner ships
+    // <feedburner:*> — so they were handed to the Atom parser, which finds no <entry> and
+    // returns nothing. The whole feed then vanished with no error anywhere.
+    // Decide on the container that is actually present, and only fall back to the real root
+    // element when a document somehow carries both.
     function parseFeed(xml, sourceName) {
-        // Auto-detect: Atom feeds contain <feed, RSS feeds contain <rss or <channel
-        if (xml.indexOf("<feed") !== -1) {
+        var hasItems = /<item[\s>]/i.test(xml);
+        var hasEntries = /<entry[\s>]/i.test(xml);
+        if (hasEntries && !hasItems)
             return parseAtomFeed(xml, sourceName);
-        }
-        return parseRssFeed(xml, sourceName);
+        if (hasItems && !hasEntries)
+            return parseRssFeed(xml, sourceName);
+        var rootMatch = /^\s*(?:<\?xml[^>]*\?>\s*)?(?:<!--[\s\S]*?-->\s*)*<\s*([A-Za-z0-9:_.-]+)/.exec(xml);
+        var root = rootMatch ? rootMatch[1].toLowerCase().replace(/^[^:]*:/, "") : "";
+        return root === "feed" ? parseAtomFeed(xml, sourceName) : parseRssFeed(xml, sourceName);
     }
 
     function parseRssFeed(xml, sourceName) {
