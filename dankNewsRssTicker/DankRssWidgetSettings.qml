@@ -13,6 +13,111 @@ PluginSettings {
     property int editingIndex: -1
     property int activeTab: 0   // 0 = General, 1 = Card, 2 = Ticker bar
 
+    // [patch:ux] The scrolling strip used to be governed by two rival booleans in two
+    // different panels — "Enable ticker bar" here and "Enable this ticker" in the pill's
+    // own settings — which read as if they toggled the same thing while actually competing
+    // for it. The strip has exactly ONE home at a time, so it is now one 3-way choice,
+    // mirrored identically in both panels, with the card's visibility as a separate,
+    // genuinely independent switch. Storage is unchanged (tickerBarEnabled + pillEnabled),
+    // so nothing in the rendering code or in existing configs has to move.
+    property bool desktopTickerOn: false
+    property bool cardShown: true
+    property bool pillOn: false
+
+    // Choosing "In the bar" only flips a setting — the pill widget still has to be PLACED
+    // in a bar section, so remind the user only while it is actually missing.
+    property bool pillPlacedInBar: false
+    function refreshPillPlacement() {
+        var bars = SettingsData.barConfigs || []
+        for (var b = 0; b < bars.length; b++) {
+            var zones = [bars[b].leftWidgets, bars[b].centerWidgets, bars[b].rightWidgets]
+            for (var z = 0; z < zones.length; z++) {
+                var list = zones[z] || []
+                for (var i = 0; i < list.length; i++) {
+                    var entry = list[i]
+                    var id = (typeof entry === "string") ? entry : (entry && entry.id)
+                    if (id === "dankNewsRssTickerPill") {
+                        root.pillPlacedInBar = true
+                        return
+                    }
+                }
+            }
+        }
+        root.pillPlacedInBar = false
+    }
+
+    readonly property string headlinesMode: root.pillOn ? "bar" : (root.desktopTickerOn ? "desktop" : "off")
+    readonly property var headlinesModeLabels: ["Off", "On the desktop (ticker bar)", "In the bar (pill)"]
+    readonly property string headlinesModeLabel: root.headlinesMode === "bar" ? root.headlinesModeLabels[2] : (root.headlinesMode === "desktop" ? root.headlinesModeLabels[1] : root.headlinesModeLabels[0])
+
+    function headlinesModeFromLabel(label) {
+        if (label === root.headlinesModeLabels[2])
+            return "bar"
+        if (label === root.headlinesModeLabels[1])
+            return "desktop"
+        return "off"
+    }
+
+    function refreshHeadlinesState() {
+        root.desktopTickerOn = !!root.loadValue("tickerBarEnabled", false)
+        root.cardShown = !root.loadValue("hideDesktopView", false)
+        root.pillOn = !!PluginService.loadPluginData("dankNewsRssTickerPill", "pillEnabled", false)
+        root.refreshPillPlacement()
+    }
+
+    function setHeadlinesMode(mode) {
+        if (mode === "bar") {
+            root.saveValue("tickerBarEnabled", false)
+            PluginService.savePluginData("dankNewsRssTickerPill", "pillEnabled", true)
+        } else if (mode === "desktop") {
+            PluginService.savePluginData("dankNewsRssTickerPill", "pillEnabled", false)
+            root.saveValue("tickerBarEnabled", true)
+        } else {
+            PluginService.savePluginData("dankNewsRssTickerPill", "pillEnabled", false)
+            root.saveValue("tickerBarEnabled", false)
+            // Nothing scrolls anywhere any more: the card is the only surface left, so it
+            // must be visible. This is what makes the old dead end unreachable.
+            root.saveValue("hideDesktopView", false)
+        }
+        root.refreshHeadlinesState()
+    }
+
+    function setCardShown(shown) {
+        root.saveValue("hideDesktopView", !shown)
+        root.refreshHeadlinesState()
+    }
+
+    Component.onCompleted: Qt.callLater(root.refreshHeadlinesState)
+
+    // PluginSettings.onPluginServiceChanged only reloads DIRECT children, and this panel's
+    // mode state lives on the root — so refresh it too whenever the service is (re)injected,
+    // instead of relying on Component.onCompleted winning the ordering race. Connections adds
+    // a handler alongside the base one rather than overriding it.
+    Connections {
+        target: root
+        function onPluginServiceChanged() {
+            root.refreshHeadlinesState()
+        }
+    }
+
+    Connections {
+        target: PluginService
+        function onPluginDataChanged(changedPluginId) {
+            if (changedPluginId === "dankNewsRssTickerPill")
+                root.refreshHeadlinesState()
+        }
+    }
+
+    Connections {
+        target: SettingsData
+        function onDesktopWidgetInstancesChanged() {
+            root.refreshHeadlinesState()
+        }
+        function onBarConfigsChanged() {
+            root.refreshPillPlacement()
+        }
+    }
+
     // --- Header ---
     StyledText {
         width: parent.width
@@ -994,16 +1099,27 @@ PluginSettings {
         wrapMode: Text.WordWrap
     }
 
+    // [patch:ux] Symmetric with the pill panel: say why these controls do nothing rather
+    // than just dimming them, so nobody drags a slider waiting for a change that can't come.
+    StyledText {
+        visible: !root.desktopTickerOn
+        width: parent.width
+        text: root.headlinesMode === "bar" ? "Inactive — the headlines are currently scrolling in the bar pill, which keeps its own width, speed and separator in its own settings (button below)." : "Inactive — the headlines aren’t scrolling anywhere. Set ‘Scrolling headlines’ to ‘On the desktop (ticker bar)’ to use these."
+        font.pixelSize: Theme.fontSizeSmall
+        color: Theme.warning
+        wrapMode: Text.WordWrap
+    }
+
     StyledText {
         width: parent.width
-        text: "Prefer it INSIDE the main bar (a small scrolling widget among the clock/tray)? That's a separate plugin sharing the same feeds — open it below, enable it, then add it to a bar via Settings → Bar."
+        text: "Prefer it INSIDE the main bar (a small scrolling widget among the clock/tray)? That's a separate plugin sharing the same feeds — open its settings below and set ‘Scrolling headlines’ to ‘In the bar (pill)’, then add the widget to a bar section via Bar → Widgets."
         font.pixelSize: Theme.fontSizeSmall
         color: Theme.surfaceVariantText
         wrapMode: Text.WordWrap
     }
 
     DankButton {
-        text: "Open ‘Dank RSS Ticker’ (bar widget) →"
+        text: "Open ‘Dank News RSS & Ticker Pill’ settings →"
         iconName: "open_in_new"
         onClicked: Quickshell.execDetached(["dms", "ipc", "call", "settings", "openWith", "plugins"])
     }
@@ -1045,42 +1161,64 @@ PluginSettings {
             width: parent.width - 34
             spacing: Theme.spacingM
 
-    ToggleSetting {
-        id: tickerToggle
-        settingKey: "tickerBarEnabled"
-        label: "Enable ticker bar"
-        description: "Show the scrolling headline bar on the desktop. Turning this ON switches OFF the in-bar ‘Dank RSS Ticker’ pill — only one ticker can be active at a time."
-        defaultValue: false
-    }
-    // mutual exclusion: enabling the desktop overlay turns off the bar pill plugin.
-    // Use PluginService.savePluginData (not SettingsData.setPluginSetting) so it ALSO
-    // emits pluginDataChanged → the pill actually reloads and collapses.
-    Connections {
-        target: tickerToggle
-        function onValueChanged() {
-            if (!tickerToggle.isInitialized)
-                return
-            if (tickerToggle.value)
-                PluginService.savePluginData("dankNewsRssTickerPill", "pillEnabled", false)
-        }
+    DankDropdown {
+        width: parent.width
+        text: "Scrolling headlines"
+        description: root.headlinesMode === "bar" ? "In the bar: add the ‘Dank News RSS & Ticker Pill’ widget to a bar section (Bar → Widgets) if you don’t see it yet." : "Where the scrolling headline strip lives. It can only be in one place at a time."
+        currentValue: root.headlinesModeLabel
+        options: root.headlinesModeLabels
+        onValueChanged: newValue => root.setHeadlinesMode(root.headlinesModeFromLabel(newValue))
     }
 
-    ToggleSetting {
-        id: hideCardSetting
-        opacity: tickerToggle.value ? 1.0 : 0.2
-        enabled: tickerToggle.value
-        settingKey: "hideDesktopView"
-        label: "Hide the desktop card"
-        description: "Keep only the scrolling bar (hides the on-desktop widget, the bar stays). Tip: also enable ‘Click-through’ so the empty area doesn’t catch clicks."
-        defaultValue: false
+    StyledText {
+        visible: root.headlinesMode === "bar" && !root.pillPlacedInBar
+        width: parent.width
+        text: "\u26a0\ufe0f One step left: the ‘Dank News RSS & Ticker Pill’ widget isn’t in a bar yet, so nothing will show. Open Bar → Widgets and add it to the Left, Center or Right Section."
+        font.pixelSize: Theme.fontSizeSmall
+        color: Theme.warning
+        wrapMode: Text.WordWrap
     }
-    // Stay in sync with the pill companion's identical "Hide the desktop card" toggle:
-    // both write hideDesktopView on this instance via the same mechanism, but a plain
-    // ToggleSetting only reads its value once — re-load it whenever the instance config
-    // changes elsewhere (e.g. the pill flips it). loadValue() no-ops if already in sync.
-    Connections {
-        target: SettingsData
-        function onDesktopWidgetInstancesChanged() { hideCardSetting.loadValue() }
+
+    DankButton {
+        visible: root.headlinesMode === "bar" && !root.pillPlacedInBar
+        text: "Open Bar → Widgets →"
+        iconName: "open_in_new"
+        onClicked: Quickshell.execDetached(["dms", "ipc", "call", "settings", "openWith", "dankbar_widgets"])
+    }
+
+    Row {
+        width: parent.width
+        spacing: Theme.spacingM
+
+        Column {
+            width: parent.width - cardToggle.width - Theme.spacingM
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: Theme.spacingXS
+
+            StyledText {
+                text: "Show the card on the desktop"
+                font.pixelSize: Theme.fontSizeLarge
+                font.weight: Font.Medium
+                color: Theme.surfaceText
+            }
+
+            StyledText {
+                width: parent.width
+                text: root.headlinesMode === "off" ? "Locked on: with the headlines not scrolling anywhere, hiding the card too would leave nothing on screen." : "Turn off to keep only the scrolling strip. Tip: also enable ‘Click-through’ so the empty area doesn’t catch clicks."
+                font.pixelSize: Theme.fontSizeSmall
+                color: Theme.surfaceVariantText
+                wrapMode: Text.WordWrap
+            }
+        }
+
+        DankToggle {
+            id: cardToggle
+            anchors.verticalCenter: parent.verticalCenter
+            enabled: root.headlinesMode !== "off"
+            opacity: enabled ? 1.0 : 0.4
+            checked: root.cardShown
+            onToggled: isChecked => root.setCardShown(isChecked)
+        }
     }
 
     StyledText {
@@ -1093,8 +1231,8 @@ PluginSettings {
 
     SliderSetting {
         id: widthSlider
-        opacity: tickerToggle.value ? 1.0 : 0.2
-        enabled: tickerToggle.value
+        opacity: root.desktopTickerOn ? 1.0 : 0.2
+        enabled: root.desktopTickerOn
         settingKey: "tickerWidthPct"
         label: "Bar width"
         description: "Width of the bar as a percentage of the screen"
@@ -1105,8 +1243,8 @@ PluginSettings {
     }
 
     SliderSetting {
-        opacity: tickerToggle.value ? 1.0 : 0.2
-        enabled: tickerToggle.value
+        opacity: root.desktopTickerOn ? 1.0 : 0.2
+        enabled: root.desktopTickerOn
         settingKey: "tickerBarHeight"
         label: "Bar height"
         defaultValue: 24
@@ -1116,8 +1254,8 @@ PluginSettings {
     }
 
     SliderSetting {
-        opacity: tickerToggle.value ? 1.0 : 0.2
-        enabled: tickerToggle.value
+        opacity: root.desktopTickerOn ? 1.0 : 0.2
+        enabled: root.desktopTickerOn
         settingKey: "tickerDockOffset"
         label: "Vertical offset (docked)"
         description: "Nudge the docked bar up/down to align its edge with the tiled windows (no overlap)."
@@ -1128,8 +1266,8 @@ PluginSettings {
     }
 
     SliderSetting {
-        opacity: tickerToggle.value ? 1.0 : 0.2
-        enabled: tickerToggle.value
+        opacity: root.desktopTickerOn ? 1.0 : 0.2
+        enabled: root.desktopTickerOn
         settingKey: "tickerBgOpacity"
         label: "Bar background opacity"
         defaultValue: 60
@@ -1139,8 +1277,8 @@ PluginSettings {
     }
 
     SliderSetting {
-        opacity: tickerToggle.value ? 1.0 : 0.2
-        enabled: tickerToggle.value
+        opacity: root.desktopTickerOn ? 1.0 : 0.2
+        enabled: root.desktopTickerOn
         settingKey: "tickerCornerRadius"
         label: "Corner radius"
         description: "Rounded corners of the bar"
@@ -1152,16 +1290,16 @@ PluginSettings {
 
     ToggleSetting {
         id: tickerBorderToggle
-        opacity: tickerToggle.value ? 1.0 : 0.2
-        enabled: tickerToggle.value
+        opacity: root.desktopTickerOn ? 1.0 : 0.2
+        enabled: root.desktopTickerOn
         settingKey: "tickerBorderEnabled"
         label: "Border"
         defaultValue: false
     }
 
     SliderSetting {
-        opacity: (tickerToggle.value && tickerBorderToggle.value) ? 1.0 : 0.2
-        enabled: tickerToggle.value && tickerBorderToggle.value
+        opacity: (root.desktopTickerOn && tickerBorderToggle.value) ? 1.0 : 0.2
+        enabled: root.desktopTickerOn && tickerBorderToggle.value
         settingKey: "tickerBorderThickness"
         label: "Border thickness"
         defaultValue: 1
@@ -1171,8 +1309,8 @@ PluginSettings {
     }
 
     SliderSetting {
-        opacity: (tickerToggle.value && tickerBorderToggle.value) ? 1.0 : 0.2
-        enabled: tickerToggle.value && tickerBorderToggle.value
+        opacity: (root.desktopTickerOn && tickerBorderToggle.value) ? 1.0 : 0.2
+        enabled: root.desktopTickerOn && tickerBorderToggle.value
         settingKey: "tickerBorderOpacity"
         label: "Border opacity"
         defaultValue: 100
@@ -1182,8 +1320,8 @@ PluginSettings {
     }
 
     SelectionSetting {
-        opacity: (tickerToggle.value && tickerBorderToggle.value) ? 1.0 : 0.2
-        enabled: tickerToggle.value && tickerBorderToggle.value
+        opacity: (root.desktopTickerOn && tickerBorderToggle.value) ? 1.0 : 0.2
+        enabled: root.desktopTickerOn && tickerBorderToggle.value
         settingKey: "tickerBorderColor"
         label: "Border color"
         options: [
@@ -1195,8 +1333,8 @@ PluginSettings {
     }
 
     SliderSetting {
-        opacity: tickerToggle.value ? 1.0 : 0.2
-        enabled: tickerToggle.value
+        opacity: root.desktopTickerOn ? 1.0 : 0.2
+        enabled: root.desktopTickerOn
         settingKey: "tickerTitleFontSize"
         label: "Title font size"
         defaultValue: 13
@@ -1206,8 +1344,8 @@ PluginSettings {
     }
 
     SliderSetting {
-        opacity: tickerToggle.value ? 1.0 : 0.2
-        enabled: tickerToggle.value
+        opacity: root.desktopTickerOn ? 1.0 : 0.2
+        enabled: root.desktopTickerOn
         settingKey: "tickerSourceFontSize"
         label: "Source font size"
         defaultValue: 13
@@ -1217,8 +1355,8 @@ PluginSettings {
     }
 
     StringSetting {
-        opacity: tickerToggle.value ? 1.0 : 0.2
-        enabled: tickerToggle.value
+        opacity: root.desktopTickerOn ? 1.0 : 0.2
+        enabled: root.desktopTickerOn
         settingKey: "tickerFontFamily"
         label: "Font family"
         description: "Leave blank to use the theme font"
@@ -1227,16 +1365,16 @@ PluginSettings {
     }
 
     ToggleSetting {
-        opacity: tickerToggle.value ? 1.0 : 0.2
-        enabled: tickerToggle.value
+        opacity: root.desktopTickerOn ? 1.0 : 0.2
+        enabled: root.desktopTickerOn
         settingKey: "tickerSourceBold"
         label: "Bold source label"
         defaultValue: true
     }
 
     SliderSetting {
-        opacity: tickerToggle.value ? 1.0 : 0.2
-        enabled: tickerToggle.value
+        opacity: root.desktopTickerOn ? 1.0 : 0.2
+        enabled: root.desktopTickerOn
         settingKey: "tickerScrollSpeed"
         label: "Scroll speed"
         defaultValue: 40
@@ -1246,8 +1384,8 @@ PluginSettings {
     }
 
     SliderSetting {
-        opacity: tickerToggle.value ? 1.0 : 0.2
-        enabled: tickerToggle.value
+        opacity: root.desktopTickerOn ? 1.0 : 0.2
+        enabled: root.desktopTickerOn
         settingKey: "tickerItemSpacing"
         label: "Spacing between headlines"
         defaultValue: 48
@@ -1257,8 +1395,8 @@ PluginSettings {
     }
 
     SelectionSetting {
-        opacity: tickerToggle.value ? 1.0 : 0.2
-        enabled: tickerToggle.value
+        opacity: root.desktopTickerOn ? 1.0 : 0.2
+        enabled: root.desktopTickerOn
         settingKey: "tickerItemMode"
         label: "Items to show"
         description: "Latest N across all feeds, or a few per source (round-robin)."
@@ -1270,8 +1408,8 @@ PluginSettings {
     }
 
     SliderSetting {
-        opacity: tickerToggle.value ? 1.0 : 0.2
-        enabled: tickerToggle.value
+        opacity: root.desktopTickerOn ? 1.0 : 0.2
+        enabled: root.desktopTickerOn
         settingKey: "tickerMaxItems"
         label: "Max items (latest mode)"
         defaultValue: 10
@@ -1281,8 +1419,8 @@ PluginSettings {
     }
 
     SliderSetting {
-        opacity: tickerToggle.value ? 1.0 : 0.2
-        enabled: tickerToggle.value
+        opacity: root.desktopTickerOn ? 1.0 : 0.2
+        enabled: root.desktopTickerOn
         settingKey: "tickerPerSourceCount"
         label: "Items per source (per-source mode)"
         defaultValue: 3
@@ -1300,8 +1438,8 @@ PluginSettings {
         property string defaultValue: "•"
         property string value: defaultValue
         property bool isInitialized: false
-        opacity: tickerToggle.value ? 1.0 : 0.2
-        enabled: tickerToggle.value
+        opacity: root.desktopTickerOn ? 1.0 : 0.2
+        enabled: root.desktopTickerOn
         width: parent.width
         spacing: Theme.spacingS
 
@@ -1359,24 +1497,24 @@ PluginSettings {
     }
 
     ToggleSetting {
-        opacity: tickerToggle.value ? 1.0 : 0.2
-        enabled: tickerToggle.value
+        opacity: root.desktopTickerOn ? 1.0 : 0.2
+        enabled: root.desktopTickerOn
         settingKey: "tickerShowSource"
         label: "Show source label"
         defaultValue: true
     }
 
     ToggleSetting {
-        opacity: tickerToggle.value ? 1.0 : 0.2
-        enabled: tickerToggle.value
+        opacity: root.desktopTickerOn ? 1.0 : 0.2
+        enabled: root.desktopTickerOn
         settingKey: "tickerPauseOnHover"
         label: "Pause on hover"
         defaultValue: true
     }
 
     ToggleSetting {
-        opacity: tickerToggle.value ? 1.0 : 0.2
-        enabled: tickerToggle.value
+        opacity: root.desktopTickerOn ? 1.0 : 0.2
+        enabled: root.desktopTickerOn
         settingKey: "tickerShowInOverview"
         label: "Show in overview"
         description: "Keep the bar visible while the compositor overview (exposé) is open. Turn off to hide it during the overview."

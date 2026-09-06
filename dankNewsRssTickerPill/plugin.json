@@ -1,14 +1,19 @@
 {
   "id": "dankNewsRssTickerPill",
   "name": "Dank News RSS & Ticker Pill",
-  "description": "Companion for the Dank News RSS & Ticker allowing you to switch the ticker bar as a pill in your widget area.",
+  "description": "Scrolling headlines inside the DankBar. Companion to the ‘Dank News RSS & Ticker’ desktop widget, which owns the feeds — this one only displays them. Add it to a bar section here, then open its settings (Plugins → Dank News RSS & Ticker Pill) and set ‘Scrolling headlines’ to ‘In the bar (pill)’.",
   "version": "1.0.0",
   "author": "Xn4m3d",
   "type": "widget",
-  "capabilities": ["dankbar-widget"],
+  "capabilities": [
+    "dankbar-widget"
+  ],
   "component": "./DankRssTicker.qml",
   "settings": "./DankRssTickerSettings.qml",
   "icon": "rss_feed",
   "requires_dms": ">=1.2.0",
-  "permissions": ["settings_read", "settings_write"]
+  "permissions": [
+    "settings_read",
+    "settings_write"
+  ]
 }
