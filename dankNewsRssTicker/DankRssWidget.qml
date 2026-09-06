@@ -204,6 +204,8 @@ DesktopPluginComponent {
     // [patch:cache] persist fetched items so a recreated widget shows them instantly
     // (no blank) then refreshes in the background.
     property string _cacheFile: "~/.cache/dankNewsRssTicker-items.json"
+    // Resolved (non-shell) form of the same path, for FileView — see writeCache().
+    readonly property string _cachePath: Paths.strip(Paths.home) + "/.cache/dankNewsRssTicker-items.json"
     function isSafeUrl(u) { return typeof u === "string" && /^https?:\/\//i.test(u); }   // [patch:secure] scheme allowlist for open/Image/cache
 
     // [patch:overview] In Niri's "overview" (all-workspaces preview), selecting a workspace
@@ -261,6 +263,10 @@ DesktopPluginComponent {
 
     function seedFromCache() {
         Proc.runCommand("rssCacheRead", ["sh", "-c", "cat " + root._cacheFile + " 2>/dev/null"], function(out, code) {
+            // The widget is recreated on resize / right-click, so this async callback can
+            // land after the old instance is gone — feedModel is then null and touching
+            // .count threw, losing the seed and logging a TypeError.
+            if (!feedModel) return;
             if (feedModel.count > 0) return;
             if (code !== 0 || !out || !out.trim()) return;
             try {
@@ -271,8 +277,26 @@ DesktopPluginComponent {
             } catch (e) {}
         });
     }
+    // [patch:cache-write] This used to shell out to
+    //     sh -c 'mkdir -p ~/.cache && printf %s "$1" > <file>'   with the whole JSON as $1.
+    // Linux caps a SINGLE argv entry at MAX_ARG_STRLEN (128 KiB), so past roughly five or six
+    // feeds the exec failed with E2BIG ("Process failed to start") and the cache silently kept
+    // stale contents — and the bar pill, which only ever reads this file, showed a partial set.
+    // FileView has no argv limit and writes atomically.
+    property bool _cacheDirReady: false
+    FileView {
+        id: cacheWriter
+        path: root._cachePath
+        atomicWrites: true
+        blockWrites: true
+        printErrors: false
+    }
     function writeCache(items) {
-        Proc.runCommand("rssCacheWrite", ["sh", "-c", "mkdir -p ~/.cache && printf %s \"$1\" > " + root._cacheFile, "sh", JSON.stringify(items || [])], function() {});
+        if (!root._cacheDirReady) {
+            Paths.mkdir(Paths.strip(Paths.home) + "/.cache");
+            root._cacheDirReady = true;
+        }
+        cacheWriter.setText(JSON.stringify(items || []));
     }
 
     onVisibleChanged: root.handleVisibilityChange()
