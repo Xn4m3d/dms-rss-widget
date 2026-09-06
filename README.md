@@ -84,8 +84,9 @@ ln -s "$PWD/dankNewsRssTicker" ~/.config/DankMaterialShell/plugins/dankNewsRssTi
 ln -s "$PWD/dankNewsRssTickerPill" ~/.config/DankMaterialShell/plugins/dankNewsRssTickerPill
 ```
 
-Reload DMS (Ctrl+Shift+R) or restart your compositor. To use the pill, add it to a bar via
-**Settings → Bar**, then enable it from its plugin settings.
+Reload DMS (Ctrl+Shift+R) or restart your compositor. To use the pill, add it to a bar section
+via **Bar → Widgets** (Left, Center or Right Section), then set **Scrolling headlines** to
+**In the bar (pill)** in either plugin's settings.
 
 ## Configuration
 
@@ -93,9 +94,14 @@ Open **Settings → Desktop Widgets → Dank News RSS & Ticker** and use the tab
 
 1. **General** — add feeds (or quick-add presets / OPML), refresh interval, max items, sort order, notifications
 2. **Card** — name label, view mode, font size, background opacity, borders
-3. **Ticker bar** — enable the overlay, width/position, height, opacity, corners, border, fonts, item mode
+3. **Ticker bar** — width/position, height, opacity, corners, border, fonts, item mode
 
-The pill has its own settings in **Settings → Plugins → Dank News RSS & Ticker Pill**.
+**Where the headlines scroll** is a single choice — `Off`, `On the desktop (ticker bar)` or
+`In the bar (pill)` — shown identically in both panels, alongside a separate switch for the
+desktop card's visibility. Only one location can be active at a time.
+
+The pill's own appearance (width, speed, separator, source label, pause on hover) lives in
+**Settings → Plugins → Dank News RSS & Ticker Pill**.
 
 ## Requirements
 
@@ -111,8 +117,9 @@ The core feed-parsing logic is mirrored in a standalone JS module
 node --test dankNewsRssTicker/feed-parser-tests/feed-parser.test.js
 ```
 
-Requires Node.js 18+ (uses the built-in `node:test` runner). 60 tests across 9 suites cover tag
-extraction, CDATA, HTML entity decoding, RSS/Atom parsing, image extraction, relative timestamps and OPML import.
+Requires Node.js 18+ (uses the built-in `node:test` runner). 64 tests across 10 suites cover tag
+extraction, CDATA, HTML entity decoding, RSS/Atom parsing and routing, image extraction, relative
+timestamps and OPML import.
 
 ## Screenshots
 
