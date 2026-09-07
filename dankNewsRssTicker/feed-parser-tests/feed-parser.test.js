@@ -9,7 +9,10 @@ const {
     parseRssFeed,
     parseAtomFeed,
     parseFeed,
-    parseOpml
+    parseOpml,
+    stripNamespacePrefix,
+    rootElementName,
+    rootElementPrefix
 } = require("./feed-parser");
 
 // ─── extractTag ───
@@ -468,5 +471,109 @@ describe("parseFeed routing", () => {
         const items = parseFeed(xml, "Both");
         assert.equal(items.length, 1);
         assert.equal(items[0].title, "Atom wins");
+    });
+});
+
+// ─── Atom documents behind a namespace prefix ───
+
+describe("prefixed Atom", () => {
+    const prefixed = `<?xml version="1.0" encoding="utf-8"?>
+    <atom:feed xmlns:atom="http://www.w3.org/2005/Atom">
+        <atom:title>Prefixed blog</atom:title>
+        <atom:entry>
+            <atom:title>First</atom:title>
+            <atom:link rel="alternate" href="https://example.com/1"/>
+            <atom:updated>2026-01-02T00:00:00Z</atom:updated>
+            <atom:summary>Body one</atom:summary>
+        </atom:entry>
+        <atom:entry>
+            <atom:title>Second</atom:title>
+            <atom:link rel="alternate" href="https://example.com/2"/>
+            <atom:updated>2026-01-01T00:00:00Z</atom:updated>
+        </atom:entry>
+    </atom:feed>`;
+
+    test("parses entries hidden behind the root prefix", () => {
+        const items = parseFeed(prefixed, "Prefixed");
+        assert.equal(items.length, 2);
+        assert.equal(items[0].title, "First");
+        assert.equal(items[0].link, "https://example.com/1");
+        assert.equal(items[0].description, "Body one");
+    });
+
+    test("keeps foreign namespaces intact while stripping the root's own", () => {
+        const xml = `<atom:feed xmlns:atom="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/">
+            <atom:entry>
+                <atom:title>With art</atom:title>
+                <atom:link rel="alternate" href="https://example.com/a"/>
+                <media:thumbnail url="https://example.com/pic.jpg"/>
+            </atom:entry>
+        </atom:feed>`;
+        const items = parseFeed(xml, "Media");
+        assert.equal(items.length, 1);
+        assert.equal(items[0].imageUrl, "https://example.com/pic.jpg");
+    });
+
+    test("stripNamespacePrefix touches element tags only, not attributes", () => {
+        const out = stripNamespacePrefix('<atom:feed xmlns:atom="x"><atom:entry/></atom:feed>', "atom");
+        assert.equal(out, '<feed xmlns:atom="x"><entry/></feed>');
+    });
+
+    test("an unprefixed document is unaffected", () => {
+        const out = stripNamespacePrefix("<feed><entry/></feed>", "");
+        assert.equal(out, "<feed><entry/></feed>");
+    });
+});
+
+// ─── root element detection ───
+
+describe("rootElementName", () => {
+    test("skips the XML declaration", () => {
+        assert.equal(rootElementName('<?xml version="1.0"?><rss version="2.0"></rss>'), "rss");
+    });
+
+    test("skips comments, including one mentioning <feed>", () => {
+        assert.equal(rootElementName("<!-- see <feed> below --><rss></rss>"), "rss");
+    });
+
+    test("skips a DOCTYPE with an internal subset", () => {
+        assert.equal(rootElementName('<!DOCTYPE rss [<!ENTITY x "y">]><rss></rss>'), "rss");
+    });
+
+    test("strips the root's namespace prefix", () => {
+        assert.equal(rootElementName("<atom:feed></atom:feed>"), "feed");
+        assert.equal(rootElementPrefix("<atom:feed></atom:feed>"), "atom");
+    });
+
+    test("returns an empty name for junk input", () => {
+        assert.equal(rootElementName("not xml at all"), "");
+        assert.equal(rootElementName(""), "");
+    });
+});
+
+describe("parseFeed routing on the root element", () => {
+    test("routes RSS 1.0 (<rdf:RDF>) to the RSS parser", () => {
+        const xml = `<?xml version="1.0"?>
+        <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns="http://purl.org/rss/1.0/">
+            <channel><title>Old school</title></channel>
+            <item rdf:about="https://example.com/x"><title>Item one</title><link>https://example.com/x</link></item>
+        </rdf:RDF>`;
+        const items = parseFeed(xml, "RDF");
+        assert.equal(items.length, 1);
+        assert.equal(items[0].title, "Item one");
+    });
+
+    test("a <feed> inside a CDATA block does not hijack an RSS document", () => {
+        const xml = `<?xml version="1.0"?><rss version="2.0"><channel>
+            <item><title>Real</title><link>https://example.com/r</link>
+            <description><![CDATA[<feed><entry>bait</entry></feed>]]></description></item>
+        </channel></rss>`;
+        const items = parseFeed(xml, "CDATA");
+        assert.equal(items.length, 1);
+        assert.equal(items[0].title, "Real");
+    });
+
+    test("falls back to the containers present when there is no usable root", () => {
+        assert.equal(parseFeed("garbage", "None").length, 0);
     });
 });

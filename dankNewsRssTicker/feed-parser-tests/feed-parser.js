@@ -110,7 +110,85 @@ function parseRssFeed(xml, sourceName) {
     return items;
 }
 
+// [patch:atom-prefix] An Atom document may declare its namespace with a prefix on the
+// root element (<atom:feed><atom:entry><atom:title>...). Every regex in parseAtomFeed
+// matches unprefixed tags only, so such a feed parses to zero items and disappears in
+// silence — the same failure mode as the routing bug above, a different cause.
+// Normalising the ROOT's own prefix away once is cheaper and safer than making each
+// entry-level regex namespace-aware: a prefix-tolerant extractTag would also match
+// <atom:link rel="self"> inside an RSS item and hijack the <link> lookup.
+// Reported upstream by BrendonJL while regression-testing the routing fix (BrendonJL#7).
+
+// Removes ONE namespace prefix from element tags: "<atom:entry>" -> "<entry>".
+// Only the prefix asked for is touched, so media:, dc: and content: elements a feed
+// carries for extra data survive, and xmlns:atom="..." attributes are left alone.
+function stripNamespacePrefix(xml, prefix) {
+    if (!xml || !prefix)
+        return xml;
+    var escaped = prefix.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&");
+    return xml.replace(new RegExp("<(/?)" + escaped + ":", "gi"), "<$1");
+}
+
+// The document's root element exactly as written, prefix included, or "" if there is
+// none. The scan skips the XML declaration, processing instructions, comments and the
+// DOCTYPE (internal subset included), so a "<feed" mentioned in a comment or a doctype
+// cannot pass for the root.
+function rootElementRaw(xml) {
+    if (!xml)
+        return "";
+    var i = 0;
+    while (i < xml.length) {
+        var lt = xml.indexOf("<", i);
+        if (lt === -1)
+            return "";
+        var next = xml.charAt(lt + 1);
+        if (next === "?") {
+            var pi = xml.indexOf("?>", lt + 2);
+            if (pi === -1)
+                return "";
+            i = pi + 2;
+        } else if (next === "!") {
+            if (xml.substr(lt + 2, 2) === "--") {
+                var comment = xml.indexOf("-->", lt + 4);
+                if (comment === -1)
+                    return "";
+                i = comment + 3;
+            } else {
+                var gt = xml.indexOf(">", lt + 2);
+                var bracket = xml.indexOf("[", lt + 2);
+                if (bracket !== -1 && (gt === -1 || bracket < gt)) {
+                    var close = xml.indexOf("]", bracket + 1);
+                    gt = close === -1 ? -1 : xml.indexOf(">", close + 1);
+                }
+                if (gt === -1)
+                    return "";
+                i = gt + 1;
+            }
+        } else {
+            var m = /^<\s*([A-Za-z_][A-Za-z0-9:_.-]*)/.exec(xml.substr(lt, 256));
+            return m ? m[1] : "";
+        }
+    }
+    return "";
+}
+
+// Root tag name, lowercased and prefix-free ("rdf:RDF" -> "rdf", "atom:feed" -> "feed").
+function rootElementName(xml) {
+    var raw = rootElementRaw(xml);
+    var colon = raw.indexOf(":");
+    return (colon === -1 ? raw : raw.substr(colon + 1)).toLowerCase();
+}
+
+// The root's own namespace prefix ("atom" for <atom:feed>), or "" when it has none.
+function rootElementPrefix(xml) {
+    var raw = rootElementRaw(xml);
+    var colon = raw.indexOf(":");
+    return colon === -1 ? "" : raw.substr(0, colon);
+}
+
 function parseAtomFeed(xml, sourceName) {
+    xml = stripNamespacePrefix(xml, rootElementPrefix(xml));
+
     var items = [];
     var entryRegex = /<entry[\s>]([\s\S]*?)<\/entry>/gi;
     var match;
@@ -145,20 +223,17 @@ function parseAtomFeed(xml, sourceName) {
 // whose name merely starts with "feed" — CNBC ships <feed_asset>, FeedBurner ships
 // <feedburner:*> — so they were handed to the Atom parser, which finds no <entry> and
 // returns nothing. The whole feed then vanished with no error anywhere.
-// Decide on the container that is actually present, and only fall back to the real root
-// element when a document somehow carries both.
+// The format is a property of the ROOT element, so that is what decides; the containers
+// actually present only break the tie when the root tells us nothing (junk input).
 function parseFeed(xml, sourceName) {
-    var hasItems = /<item[\s>]/i.test(xml);
-    var hasEntries = /<entry[\s>]/i.test(xml);
-    if (hasEntries && !hasItems) {
+    var root = rootElementName(xml);
+    if (root === "feed")
         return parseAtomFeed(xml, sourceName);
-    }
-    if (hasItems && !hasEntries) {
+    if (root === "rss" || root === "rdf")
         return parseRssFeed(xml, sourceName);
-    }
-    var rootMatch = /^\s*(?:<\?xml[^>]*\?>\s*)?(?:<!--[\s\S]*?-->\s*)*<\s*([A-Za-z0-9:_.-]+)/.exec(xml);
-    var root = rootMatch ? rootMatch[1].toLowerCase().replace(/^[^:]*:/, "") : "";
-    return root === "feed" ? parseAtomFeed(xml, sourceName) : parseRssFeed(xml, sourceName);
+    var hasItems = /<item[\s>]/i.test(xml);
+    var hasEntries = /<entry[\s>]/i.test(xml) || /<[A-Za-z0-9_.-]+:entry[\s>]/i.test(xml);
+    return hasEntries && !hasItems ? parseAtomFeed(xml, sourceName) : parseRssFeed(xml, sourceName);
 }
 
 function parseOpml(xml) {
@@ -186,5 +261,8 @@ module.exports = {
     parseRssFeed,
     parseAtomFeed,
     parseFeed,
-    parseOpml
+    parseOpml,
+    stripNamespacePrefix,
+    rootElementName,
+    rootElementPrefix
 };

@@ -117,9 +117,9 @@ The core feed-parsing logic is mirrored in a standalone JS module
 node --test dankNewsRssTicker/feed-parser-tests/feed-parser.test.js
 ```
 
-Requires Node.js 18+ (uses the built-in `node:test` runner). 64 tests across 10 suites cover tag
-extraction, CDATA, HTML entity decoding, RSS/Atom parsing and routing, image extraction, relative
-timestamps and OPML import.
+Requires Node.js 18+ (uses the built-in `node:test` runner). 76 tests across 13 suites cover tag
+extraction, CDATA, HTML entity decoding, RSS/Atom parsing, root-element routing, namespace-prefixed
+Atom, image extraction, relative timestamps and OPML import.
 
 ## Screenshots
 
